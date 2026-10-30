@@ -20,7 +20,8 @@ object ProfileStore {
     fun save(file: File, source: String, overrides: JSONObject? = null): Boolean {
         val previous = if (file.exists()) file.readText() else ""
         val effectiveOverrides = overrides ?: snapshots(file).optJSONObject(SurgeConverter.digest(previous))?.optJSONObject("androidOverrides") ?: JSONObject()
-        val (result, pending) = compile(source, effectiveOverrides)
+        val (converted, pending) = compile(source, effectiveOverrides)
+        val result = AndroidRuntimeFeatures.scopeToProfile(converted, file.name)
         val digest = SurgeConverter.digest(result.json)
         val oldDigest = SurgeConverter.digest(previous)
         val oldSnapshots = snapshots(file)
@@ -46,10 +47,57 @@ object ProfileStore {
     fun report(file: File): JSONObject {
         val runtime = file.readText()
         val snapshot = snapshots(file).optJSONObject(SurgeConverter.digest(runtime))
-        return obj("format" to (snapshot?.optString("format") ?: "sing-box"),
+        return obj(
+            "format" to (snapshot?.optString("format") ?: "sing-box"),
             "warnings" to (snapshot?.optJSONArray("warnings") ?: JSONArray()),
             "runtimeSha256" to SurgeConverter.digest(runtime),
-            "androidOverrides" to (snapshot?.optJSONObject("androidOverrides") ?: JSONObject()))
+            "androidOverrides" to (snapshot?.optJSONObject("androidOverrides") ?: JSONObject()),
+        )
+    }
+
+    @Synchronized
+    fun markRunning(file: File) {
+        val runtime = file.readText()
+        val snapshot = snapshots(file).optJSONObject(SurgeConverter.digest(runtime)) ?: return
+        atomicWrite(File(file.path + ".running"), obj("runtime" to runtime, "snapshot" to snapshot).toString())
+    }
+
+    @Synchronized
+    fun restoreRunning(file: File): Boolean {
+        val backup = File(file.path + ".running")
+        if (!backup.exists()) return false
+        val saved = JSONObject(AtomicFile(backup).openRead().bufferedReader().use { it.readText() })
+        val runtime = saved.getString("runtime")
+        val current = file.readText()
+        if (current == runtime) return false
+        Libbox.checkConfig(runtime)
+        val retained = snapshots(file)
+        val result = JSONObject().put(SurgeConverter.digest(runtime), saved.getJSONObject("snapshot"))
+        retained.optJSONObject(SurgeConverter.digest(current))?.let { result.put(SurgeConverter.digest(current), it) }
+        atomicWrite(snapshotFile(file), result.toString())
+        atomicWrite(file, runtime)
+        return true
+    }
+
+    /** Upgrade cached generated JSON without downloading subscriptions/rule sets at VPN start. */
+    @Synchronized
+    fun ensureRuntimeFeatures(file: File) {
+        val runtime = file.readText()
+        val oldDigest = SurgeConverter.digest(runtime)
+        val old = snapshots(file)
+        val snapshot = old.optJSONObject(oldDigest) ?: return
+        val result = AndroidRuntimeFeatures.scopeToProfile(
+            AndroidRuntimeFeatures.apply(
+                SurgeConverter.Result(runtime, emptyList(), snapshot.optString("format")),
+                snapshot.optJSONObject("androidOverrides") ?: JSONObject(),
+            ),
+            file.name,
+        )
+        if (result.json == runtime) return
+        Libbox.checkConfig(result.json)
+        val retained = JSONObject().put(oldDigest, snapshot).put(SurgeConverter.digest(result.json), snapshot)
+        atomicWrite(snapshotFile(file), retained.toString())
+        atomicWrite(file, result.json)
     }
 
     private fun compile(source: String, overrides: JSONObject = JSONObject()): Pair<SurgeConverter.Result, Map<File, String>> {
@@ -59,10 +107,13 @@ object ProfileStore {
         val converted = SurgeConverter { url, ttl ->
             val cache = File(cacheDir, SurgeConverter.digest(url))
             val age = System.currentTimeMillis() - cache.lastModified()
-            if (cache.isFile && age in 0 until ttl.toLong() * 1000) cache.readText()
-            else pending.getOrPut(cache) { download(url) }
+            if (cache.isFile && age in 0 until ttl.toLong() * 1000) {
+                cache.readText()
+            } else {
+                pending.getOrPut(cache) { download(url) }
+            }
         }.convert(source)
-        val result = AndroidRoutingOverrides.apply(converted, overrides)
+        val result = AndroidRuntimeFeatures.apply(AndroidRoutingOverrides.apply(converted, overrides), overrides)
         try {
             Libbox.checkConfig(result.json)
         } catch (_: Exception) {
@@ -102,7 +153,9 @@ object ProfileStore {
                             output.toString("UTF-8")
                         }
                     }
-                } finally { connection.disconnect() }
+                } finally {
+                    connection.disconnect()
+                }
             }
             error("redirect limit")
         } catch (_: Exception) {
@@ -119,7 +172,12 @@ object ProfileStore {
         file.parentFile?.mkdirs()
         val atomic = AtomicFile(file)
         val stream = atomic.startWrite()
-        try { stream.write(content.toByteArray(Charsets.UTF_8)); atomic.finishWrite(stream) }
-        catch (e: Exception) { atomic.failWrite(stream); throw e }
+        try {
+            stream.write(content.toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(stream)
+        } catch (e: Exception) {
+            atomic.failWrite(stream)
+            throw e
+        }
     }
 }

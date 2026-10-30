@@ -92,6 +92,7 @@ fun ServiceSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
+    var restoreOnBoot by remember { mutableStateOf(Settings.restoreOnBoot) }
     var allowBypass by remember { mutableStateOf(Settings.allowBypass) }
     val notifyApplyChange = rememberApplyServiceChangeNotifier(serviceStatus)
     val requestBatteryOptimizationLauncher =
@@ -128,6 +129,25 @@ fun ServiceSettingsScreen(
                 bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
             ),
     ) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.restore_vpn_on_boot)) },
+            supportingContent = { Text(stringResource(R.string.restore_vpn_on_boot_description)) },
+            trailingContent = {
+                Switch(checked = restoreOnBoot, onCheckedChange = {
+                    restoreOnBoot = it
+                    scope.launch(Dispatchers.IO) {
+                        Settings.restoreOnBoot = it
+                        Settings.dataStore.flush()
+                    }
+                })
+            },
+        )
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS)) },
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            Text(stringResource(R.string.system_always_on_vpn))
+        }
         if (!isBatteryOptimizationIgnored && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Card(
                 modifier =

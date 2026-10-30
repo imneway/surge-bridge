@@ -678,4 +678,25 @@
     <string name="surge_configuration">Surge 設定</string>
     <string name="clear_android_routing_overrides">移除 Android 分流覆寫</string>
     <string name="android_overrides_restart">設定已儲存，請啟動或重新啟動 VPN 以生效。</string>
+    <string name="profile_add_url">從 URL 匯入</string>
+    <string name="profile_add_url_description">下載 Surge 設定，單獨設定此設定檔的更新方式</string>
+    <string name="restore_vpn_on_boot">開機恢復連線</string>
+    <string name="restore_vpn_on_boot_description">僅在重新啟動前 VPN 正在運作時恢復；主動停止後不會自動啟動。</string>
+    <string name="system_always_on_vpn">系統永遠開啟 VPN 設定</string>
+    <string name="failure_only_failover">僅故障切換</string>
+    <string name="failure_only_failover_description">約每分鐘檢查一次，連續兩輪失敗後按設定順序切到可用備用節點。健康節點保持不變，不按速度切換、不自動切回、不降級直連。Direct 模式暫停檢查；切換時現有連線可能重連。</string>
+    <string name="failover_save_failed">無法儲存故障切換設定，已保留原設定。</string>
+    <string name="profile_refresh_failed">更新失敗，保留原設定</string>
+    <string name="profile_refresh_changed">設定已更新</string>
+    <string name="profile_refresh_unchanged">已檢查，無變更</string>
+    <string name="profile_update_this_only">自動更新此設定檔</string>
+    <string name="profile_interval_range">更新週期須為 15–10080 分鐘</string>
+    <string name="failover_healthy">目前節點正常</string>
+    <string name="failover_all_failed">無可用備用節點，保留目前節點</string>
+    <string name="failover_switched">連續故障後已切換</string>
+    <string name="failover_first_failure">首次檢查失敗，等待下一輪確認</string>
+    <string name="failover_paused">直連模式，暫停檢查</string>
+    <string name="failover_cooldown">切換冷卻期</string>
+    <string name="failover_probing">正在檢查連通性</string>
+    <string name="failover_waiting">等待 VPN 或下一次檢查</string>
 </resources>

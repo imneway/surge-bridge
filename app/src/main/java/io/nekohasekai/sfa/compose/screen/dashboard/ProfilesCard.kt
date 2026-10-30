@@ -414,6 +414,15 @@ fun ProfilesCard(
                 ListItem(
                     modifier = Modifier.clickable {
                         onHideAddProfileSheet()
+                        onOpenNewProfile(NewProfileArgs(importName = "", importUrl = ""))
+                    },
+                    headlineContent = { Text(stringResource(R.string.profile_add_url)) },
+                    supportingContent = { Text(stringResource(R.string.profile_add_url_description)) },
+                )
+
+                ListItem(
+                    modifier = Modifier.clickable {
+                        onHideAddProfileSheet()
                         showQRScanSheet = true
                     },
                     leadingContent = {

@@ -9,7 +9,7 @@ object AndroidRoutingOverrides {
     fun apply(result: SurgeConverter.Result, overrides: JSONObject): SurgeConverter.Result {
         if (overrides.length() == 0) return result
         require(result.sourceFormat == "surge") { "Android routing overrides require a Surge profile" }
-        val allowed = setOf("policy", "packages", "domains", "dns")
+        val allowed = setOf("policy", "packages", "domains", "dns", "failoverGroups")
         require(overrides.keys().asSequence().all { it in allowed }) { "Unknown Android override field" }
         val config = JSONObject(result.json)
         val policy = overrides.getString("policy")
@@ -26,6 +26,15 @@ object AndroidRoutingOverrides {
         val domains = values("domains")
         require(packages.all { it.matches(Regex("[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+")) }) { "Invalid package name" }
         require(domains.all { it.length <= 253 && it.matches(Regex("[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?")) && '.' in it && ".." !in it }) { "Invalid domain suffix" }
+        val failoverGroups = overrides.optJSONArray("failoverGroups") ?: JSONArray()
+        val eligible = AndroidRuntimeFeatures.eligibleGroups(config)
+        require((0 until failoverGroups.length()).all { failoverGroups.getString(it) in eligible }) { "Failover needs a selector with at least two proxy nodes and no nested groups; DIRECT is excluded from automatic selection" }
+        for (i in 0 until outbounds.length()) {
+            val group = outbounds.getJSONObject(i)
+            if ((0 until failoverGroups.length()).any { failoverGroups.getString(it) == group.optString("tag") }) {
+                group.put("interrupt_exist_connections", true)
+            }
+        }
         val route = config.getJSONObject("route")
         val originalRules = route.getJSONArray("rules")
         val rules = JSONArray()
@@ -42,17 +51,30 @@ object AndroidRoutingOverrides {
         }
         route.put("rules", rules)
         val warnings = result.warnings.toMutableList()
+        if (failoverGroups.length() > 0) warnings.add("Android failure-only failover: two failed probe rounds; healthy nodes stay selected; no latency ranking or automatic failback.")
         if (packages.isNotEmpty()) warnings.add("Android override: all traffic from ${packages.joinToString()} uses $policy, including IP-only connections.")
         if (domains.isNotEmpty()) warnings.add("Android override: ${domains.joinToString()} use $policy before IP/GEOIP DNS lookup.")
         if (overrides.has("dns")) {
-            val uri = try { URI(overrides.getString("dns")) } catch (_: Exception) { throw IllegalArgumentException("Invalid override DNS URL") }
+            val uri = try {
+                URI(overrides.getString("dns"))
+            } catch (_: Exception) {
+                throw IllegalArgumentException("Invalid override DNS URL")
+            }
             // An IP endpoint avoids a resolver -> proxy -> resolver bootstrap cycle.
             require(uri.scheme == "https" && uri.host?.matches(Regex("[0-9]+(?:\\.[0-9]+){3}")) == true && uri.userInfo == null && uri.fragment == null && uri.query == null) { "Override DNS requires an HTTPS IPv4 endpoint without credentials/query" }
             require(uri.host.split('.').all { it.toIntOrNull() in 0..255 }) { "Invalid override DNS IP" }
             val dns = config.getJSONObject("dns")
-            val server = obj("type" to "https", "tag" to "android-proxy-dns", "server" to uri.host,
-                "path" to uri.rawPath.ifEmpty { "/dns-query" }, "detour" to policy)
-            if (uri.port != -1) { require(uri.port in 1..65535); server.put("server_port", uri.port) }
+            val server = obj(
+                "type" to "https",
+                "tag" to "android-proxy-dns",
+                "server" to uri.host,
+                "path" to uri.rawPath.ifEmpty { "/dns-query" },
+                "detour" to policy,
+            )
+            if (uri.port != -1) {
+                require(uri.port in 1..65535)
+                server.put("server_port", uri.port)
+            }
             dns.getJSONArray("servers").put(server)
             dns.put("final", "android-proxy-dns")
             // The original route.default_domain_resolver remains the node bootstrap resolver.

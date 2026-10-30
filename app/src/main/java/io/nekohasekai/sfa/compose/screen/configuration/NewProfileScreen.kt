@@ -518,7 +518,8 @@ fun NewProfileScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = stringResource(R.string.profile_auto_update),
+                                text = stringResource(R.string.profile_update_this_only),
+                                modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Switch(
@@ -529,7 +530,7 @@ fun NewProfileScreen(
 
                         AnimatedVisibility(visible = uiState.autoUpdate) {
                             OutlinedTextField(
-                                value = uiState.autoUpdateInterval.toString(),
+                                value = uiState.autoUpdateIntervalInput,
                                 onValueChange = viewModel::updateAutoUpdateInterval,
                                 label = { Text(stringResource(R.string.profile_auto_update_interval)) },
                                 supportingText = { Text(stringResource(R.string.profile_auto_update_interval_minimum_hint)) },

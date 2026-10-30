@@ -41,14 +41,14 @@ bash tools/build-android.sh
 
 主文件始终是内核 JSON；`.source` 快照通过生成内容的 SHA-256 关联原始源文件，最多保留前后两代。规则集缓存在私有文件区，只在整个配置通过校验后写入缓存。重启 VPN 使用已生成配置，不需要重新下载 Surge 文本规则集。GEOIP 使用内核远程 SRS，有自己的首次下载/更新过程。
 
-订阅文本的规则集按自身 `update-interval` 缓存，只有下一次配置刷新时才检查到期；这并不是每个规则集独立后台计时器。详情中展示不能等价转换的项目。更新为新配置后若服务重载失败，文件已通过静态校验但不代表运行成功，应查看服务状态/日志。
+订阅文本的规则集按自身 `update-interval` 缓存，只有下一次配置刷新时才检查到期；这并不是每个规则集独立后台计时器。详情中展示不能等价转换的项目。新配置通过静态校验后若内核加载失败，会尝试恢复该配置上次成功运行的版本，并记录回滚结果；仍应查看服务状态/日志确认恢复。
 
 ## 自动调试
 
 见 [debug-api.md](debug-api.md)。API 只在 debug 变体启动；release 使用空实现。只监听 Android `127.0.0.1:19090`，每次应用进程启动生成新的 bearer token，电脑经 `adb forward` 和 `run-as` 访问。API 不返回源配置、PSK、订阅 URL 或配置解析器原始错误。新增的 core-logs 接口会包含访问目标、节点标签等敏感元数据，保存后需脱敏再分享。
 
 ```sh
-python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.2-arm64-v8a-debug.apk
+python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.3-arm64-v8a-debug.apk
 python3 tools/android-debug.py import /path/to/Work.conf
 python3 tools/android-debug.py select 1
 python3 tools/android-debug.py start
@@ -71,6 +71,8 @@ python3 tools/android-debug.py logcat .private/device.log
 - `tools/test-snell.py CORE`：临时回环 Snell v6 服务端与客户端，验证三种 mode、两种 reuse 状态下 TCP/UDP，不修改主机系统代理或 VPN。
 - `tools/test-android-api.py --serial emulator-PORT`：已安装 APK 的鉴权、导入、原文快照、失败回滚、远程刷新、规则集 TTL 回归测试。仅允许模拟器。
 - `tools/test-android-snell.py CORE --serial emulator-PORT`：Android TUN 到本机受控 Snell v6 服务端的 TCP/UDP 链路。先通过模拟器系统界面授予 VPN 权限。
+- `tools/test-android-features.py --serial emulator-PORT`：独立更新、三模式实际路由、受控 Snell v6 节点失效/恢复与选择持久化；测试 CA 只加入临时配置。仅允许模拟器。
+- `tools/test-android-boot.py --serial emulator-PORT`：真实模拟器重启，以及内核加载失败后恢复上次运行配置。仅允许模拟器。
 - 私有真实配置验证报告保存在 `.private/`。实际节点连通性与受控协议测试分别记录，不能互相替代。
 
 详见 [compatibility.md](compatibility.md) 和 [validation.md](validation.md)。
@@ -80,3 +82,15 @@ python3 tools/android-debug.py logcat .private/device.log
 OPPO Android 17 真机验证发现：原目标 DNS 返回错误 IP，且 `IP-CIDR,0.0.0.0/0,DIRECT,no-resolve` 会让 ChatGPT 的纯 IP 连接直连。为此增加独立的 Android 包名/域名/代理 DNS 设置，原始 Surge 文件不改。当前测试配置让 Chrome 和 ChatGPT 全部流量使用 Proxy，Google/OpenAI 域名在 IP/GEOIP 之前匹配；默认目标 DNS 使用代理内 HTTPS。节点解析器保持原配置，避免循环依赖。
 
 这些设置可由 debug API 写入，在配置详情里可见并可移除；同一配置的源文件更新保留它们。重新导入为新配置不会自动套用。Google 三个 Snell v6 节点和网络切换测试、ChatGPT 实际回复已在真机验证，具体范围见 [validation.md](validation.md)。
+
+## 1.14.4-surge.3：日常使用功能
+
+- **URL 导入**：配置「＋」→「从 URL 导入」。输入名称和返回完整 Surge 文本的链接；文件导入、扫码入口保留。
+- **每份配置独立更新**：远程配置详情中的「自动更新此配置」及周期只作用于该配置。新建默认 6 小时，最短 15 分钟、最长 7 天；已有周期不变。关闭后仍可点击手动更新。打开 App／启动 VPN 会异步检查已到期且开启自动更新的配置，连接先使用缓存，不等待订阅下载。Android 后台调度可能延迟。
+- **更新结果**：详情显示最近检查时间及有无变化／失败。下载或转换失败保留旧配置；新配置通过静态校验但内核加载失败时，尝试恢复该配置上次成功运行的版本。不能保证任意联网故障都可据此自动回滚。
+- **开机恢复**：设置 → 服务 →「开机恢复连接」。只有重启前仍在运行才恢复；主动停止后不恢复。另有系统 VPN 设置入口，可自行配置系统“始终开启 VPN”。OPPO 后台限制和系统始终开启 VPN 的行为需要真机复核。
+- **三模式**：启动 Surge 配置后，仪表中的模式卡可选 Rule／Global／Direct。Rule 保留源分流及 Android 修正；Global 使用 Android 指定的 policy，未指定时优先使用源 FINAL 的代理策略；Direct 优先于 Android 强制代理设置。保留 TUN 排除范围及已有 hosts/fake-IP/IPv6 策略，DNS 上游随模式变化。切换会关闭已建立的路由连接，应用需重连。
+- **仅故障切换**：编辑配置 →「仅故障切换」→ 对指定 select 策略组开启。约每分钟检查，两轮失败才按源配置顺序选健康备用；不比较速度、不自动切回、不降级直连。Direct 暂停检查。首版要求 select 组至少含两个代理节点，不支持嵌套组。源配置中的 DIRECT 保留供手动选择，但不参与故障切换候选；手动选中 DIRECT 时暂停故障切换。
+- **多配置隔离**：模式、所选节点和 fake-IP 缓存按配置文件身份隔离；更新同一配置保留身份。旧版共享缓存首次迁移时，可能回到默认 Rule 和组内首节点，请核对选择；后续重启会保留各自选择。
+
+更新、模式、故障切换和开机设置均已补充 debug API，见 [debug-api.md](debug-api.md)。开发计划见 [DEVELOPMENT-2026-10-31.md](DEVELOPMENT-2026-10-31.md)。

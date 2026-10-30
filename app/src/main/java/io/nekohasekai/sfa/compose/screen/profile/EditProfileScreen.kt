@@ -81,6 +81,7 @@ fun EditProfileScreen(
     viewModel: EditProfileViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val failoverStatus by io.nekohasekai.sfa.bg.FailoverController.status.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Clear success indicator after delay
@@ -213,6 +214,47 @@ fun EditProfileScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                if (uiState.refreshStatus.isNotEmpty()) {
+                    Text(uiState.refreshStatus, modifier = Modifier.padding(16.dp))
+                }
+                if (uiState.failoverGroups.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.failure_only_failover), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.failure_only_failover_description))
+                            uiState.failoverGroups.forEach { group ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(group)
+                                        if (uiState.profile?.id == io.nekohasekai.sfa.database.Settings.selectedProfile) {
+                                            val status = org.json.JSONObject(failoverStatus).optJSONObject(group)
+                                            val reason = when (status?.optString("reason")) {
+                                                "healthy" -> R.string.failover_healthy
+                                                "all_unavailable" -> R.string.failover_all_failed
+                                                "switched_after_failures" -> R.string.failover_switched
+                                                "probe_failed" -> R.string.failover_first_failure
+                                                "paused_direct", "paused_manual_direct" -> R.string.failover_paused
+                                                "cooldown" -> R.string.failover_cooldown
+                                                "probing" -> R.string.failover_probing
+                                                else -> R.string.failover_waiting
+                                            }
+                                            if (group in uiState.enabledFailoverGroups) Text(stringResource(reason), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                    Switch(
+                                        checked = group in uiState.enabledFailoverGroups,
+                                        enabled = !uiState.isSaving,
+                                        onCheckedChange = { viewModel.toggleFailover(group, it) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 if (uiState.compatibilityNotices.isNotEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Text(uiState.compatibilityNotices, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
@@ -314,10 +356,8 @@ fun EditProfileScreen(
                     }
                 }
 
-                // Remote Profile Options
-                if (uiState.compatibilityNotices.isNotEmpty()) {
-                                        stringResource(R.string.surge_configuration)
-                                    } else if (uiState.profileType == TypedProfile.Type.Remote) {
+                // Remote settings apply to Surge subscriptions as well as native JSON.
+                if (uiState.profileType == TypedProfile.Type.Remote) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors =
@@ -415,7 +455,8 @@ fun EditProfileScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = stringResource(R.string.profile_auto_update),
+                                    text = stringResource(R.string.profile_update_this_only),
+                                    modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Switch(
@@ -426,7 +467,7 @@ fun EditProfileScreen(
 
                             AnimatedVisibility(visible = uiState.autoUpdate) {
                                 OutlinedTextField(
-                                    value = uiState.autoUpdateInterval.toString(),
+                                    value = uiState.autoUpdateIntervalInput,
                                     onValueChange = viewModel::updateAutoUpdateInterval,
                                     label = { Text(stringResource(R.string.profile_auto_update_interval)) },
                                     supportingText = {

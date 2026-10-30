@@ -74,6 +74,7 @@ class Application : Application() {
                 Log.w("Application", "setup libbox: ${it.message}")
             }
             UpdateProfileWork.reconfigureUpdater()
+            UpdateProfileWork.checkDueSoon()
             HookModuleUpdateNotifier.sync(this@Application)
             TaildropFiles.cleanCache()
         }

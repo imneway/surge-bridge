@@ -40,3 +40,30 @@ OPPO PKT110, Android 17, ARM64; authorized USB debugging. Original phone configu
 Private evidence: `.private/google-node-matrix.json`, `.private/google-stability.json`, `.private/chatgpt-sent.png`, `.private/chatgpt-response-logs.json`, `.private/phone-persistence.json`, `.private/chatgpt-final-response.png`, `.private/chatgpt-final-routing-counts.json`. Evidence includes sensitive browsing/configuration metadata and is intentionally excluded from Git. No user credentials or server administrator access were required.
 
 Remaining scope: arbitrary Surge configurations, prolonged background uptime, every ChatGPT feature, physical-phone UDP/QUIC, and all carrier conditions have not been exhaustively tested. The earlier controlled Snell TCP/UDP tests remain separate evidence.
+
+
+## Daily-use features — 2026-10-31, 1.14.4-surge.3
+
+Implemented and installed version 748 on the OPPO Android 17 phone and Android 16 ARM64 emulator. Native transport remains pinned to sing-box 1.14.4.
+
+| Check | Observed result |
+|---|---|
+| Build and formatting | `assembleOtherDebug` passed; scoped Kotlin formatting check passed |
+| Converter / routing / decision regressions | 80 assertions: 35 converter, 19 Android override, 26 modes/failure-only; three generated configs passed native validation |
+| API/storage/subscription regression | 29 assertions passed on emulator |
+| Multi-profile update and live routing/failover | 17 assertions passed, including a selector containing optional manual DIRECT |
+| Runtime rollback and actual reboot | 5 assertions passed on emulator: occupied-port load failure restores last running config; restore enabled, disabled, and manual-stop cases |
+| Remote Surge editor UI | URL and manual Update button visible; toggling automatic update and saving changed only that profile, verified via API |
+| Physical phone UI | Failure-only Proxy switch enabled from the profile editor; healthy current node retained; source text and original selected node preserved |
+| Physical phone HTTPS | Google and gstatic returned verified-TLS HTTP 204 throughout the upgrade checks; latest APK repeated both successfully |
+| Physical phone ChatGPT | Temporary test conversation answered `3 + 3 = 6`; package-correlated captured records contained 22 Snell outbounds and zero DIRECT outbounds |
+
+The update fixture used two remote profiles with different enable/interval settings: only the enabled, overdue profile refreshed automatically; disabled profile still refreshed manually. A failing HTTP response preserved the runtime hash and exposed failure status. Direct and Global were tested against a source containing a catch-all DIRECT rule, with actual traffic checked at controlled local targets.
+
+The failover fixture used three local Snell v6 servers and verified HTTPS probes. Healthy A stayed selected. Stopping A caused no switch after the first failed round, then selected B after the second. Restarting A did not cause failback. Global mode and selected B survived VPN stop/start. The fixture's ephemeral TLS root was trusted only by that synthetic profile, with certificate verification enabled; no device-wide CA was installed. Pure decision tests also verify that DIRECT cannot become an automatic backup and manual DIRECT pauses switching.
+
+The per-profile cache now isolates selected nodes, mode and fake-IP state; repeated fixture runs exposed and verified the fix for cross-profile selection leakage. Original phone source content was compared against the pre-upgrade private backup and remained identical. The phone was left connected in Rule mode with its original node and opt-in failure-only switching enabled for Proxy.
+
+Private evidence: `.local-tools/features-mixed-direct.log`, `.local-tools/api-final.log`, `.local-tools/boot-test.log`, `.private/phone-surge3-final-apk-google.json`, `.private/chatgpt3-final-reply.png`, `.private/phone-surge3-chatgpt-routing-counts.json`, `.private/phone-surge3-final-failover.json`. These files are ignored and are not included in Git.
+
+Limits: reboot recovery was exercised on the emulator, not by rebooting the user's OPPO phone. Manufacturer background restrictions, long-duration scheduling/uptime and exact periodic execution times remain outside this finite verification. WorkManager schedules best-effort work; opening the app or starting VPN also checks enabled overdue profiles. Generic HTTPS health does not guarantee ChatGPT accepts an exit IP. Existing Surge `url-test` semantics are unchanged; failure-only selection applies to eligible `select` groups.

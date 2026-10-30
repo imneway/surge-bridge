@@ -38,7 +38,7 @@ class TypedProfile() : Parcelable {
     var remoteURL: String = ""
     var lastUpdated: Date = Date(0)
     var autoUpdate: Boolean = false
-    var autoUpdateInterval = 60
+    var autoUpdateInterval = 360
 
     constructor(reader: Parcel) : this() {
         val version = reader.readInt()

@@ -36,3 +36,5 @@ Android 可选覆盖设置独立于 Surge 原文保存，并随同一配置的�
 - [sing-box Snell](https://sing-box.sagernet.org/configuration/outbound/snell/)
 - [sing-box rule-set](https://sing-box.sagernet.org/configuration/rule-set/)
 - [Mihomo Snell](https://wiki.metacubex.one/config/proxies/snell/)
+
+1.14.4-surge.3 adds Android mode rules after conversion: DNS interception remains first; Direct/Global precede Android package/domain overrides and source rules. Global uses the configured Android policy, otherwise a proxy FINAL policy, selector or first proxy. Source TUN exclusions still apply outside the VPN. Mode and node cache identities are per profile, not per source text. Failure-only switching is opt-in for leaf-only select groups; imported `url-test` semantics are unchanged, and Surge `fallback` syntax is still unsupported.

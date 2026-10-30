@@ -22,7 +22,7 @@ class BootReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                if (Settings.startedByUser) {
+                if (Settings.restoreOnBoot && Settings.startedByUser) {
                     CrashReportManager.refresh()
                     if (CrashReportManager.unreadCount.value > 0) {
                         Settings.startedByUser = false

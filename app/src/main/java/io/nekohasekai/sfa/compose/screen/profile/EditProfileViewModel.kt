@@ -30,12 +30,16 @@ data class EditProfileUiState(
     val profile: Profile? = null,
     val compatibilityNotices: String = "",
     val hasAndroidOverrides: Boolean = false,
+    val failoverGroups: List<String> = emptyList(),
+    val enabledFailoverGroups: Set<String> = emptySet(),
+    val refreshStatus: String = "",
     val name: String = "",
     val icon: String? = null,
     val profileType: TypedProfile.Type? = null,
     val remoteUrl: String = "",
     val autoUpdate: Boolean = false,
     val autoUpdateInterval: Int = 60,
+    val autoUpdateIntervalInput: String = "60",
     val lastUpdated: Date? = null,
     // Original values for change detection
     val originalName: String = "",
@@ -69,6 +73,49 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
         return "Surge configuration" + (0 until notices.length()).joinToString("") { "\n• " + notices.getString(it) }
     }
 
+    private fun refreshStatus(profile: Profile): String {
+        val report = io.nekohasekai.sfa.surge.ProfileRefresh.report(profile)
+        if (!report.has("attemptedAt")) return ""
+        val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(report.getLong("attemptedAt")))
+        val label = if (!report.optBoolean("success")) {
+            R.string.profile_refresh_failed
+        } else if (report.optBoolean("changed")) {
+            R.string.profile_refresh_changed
+        } else {
+            R.string.profile_refresh_unchanged
+        }
+        return "$date · " + getApplication<Application>().getString(label)
+    }
+
+    fun toggleFailover(group: String, enabled: Boolean) {
+        val profile = _uiState.value.profile ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isSaving = true) }
+            try {
+                val file = File(profile.typed.path)
+                val options = ProfileStore.report(file).getJSONObject("androidOverrides")
+                if (!options.has("policy")) options.put("policy", group)
+                val chosen = _uiState.value.enabledFailoverGroups.toMutableSet()
+                if (enabled) chosen.add(group) else chosen.remove(group)
+                options.put("failoverGroups", org.json.JSONArray(chosen.toList()))
+                ProfileStore.save(file, ProfileStore.source(file), options)
+                ProfileManager.update(profile)
+                val reloadFailed = profile.id == Settings.selectedProfile && runCatching { Libbox.newStandaloneCommandClient().serviceReload() }.isFailure
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        enabledFailoverGroups = chosen,
+                        hasAndroidOverrides = true,
+                        compatibilityNotices = conversionNotices(profile),
+                        errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null,
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isSaving = false, errorMessage = getApplication<Application>().getString(R.string.failover_save_failed)) }
+            }
+        }
+    }
+
     fun clearAndroidOverrides() {
         val profile = _uiState.value.profile ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -79,9 +126,15 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 ProfileManager.update(profile)
                 val reloadFailed = profile.id == Settings.selectedProfile &&
                     runCatching { Libbox.newStandaloneCommandClient().serviceReload() }.isFailure
-                _uiState.update { it.copy(isSaving = false, compatibilityNotices = conversionNotices(profile),
-                    hasAndroidOverrides = false,
-                    errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null) }
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        compatibilityNotices = conversionNotices(profile),
+                        hasAndroidOverrides = false,
+                        enabledFailoverGroups = emptySet(),
+                        errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null,
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, errorMessage = e.message) }
             }
@@ -108,6 +161,9 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         profile = profile,
                         compatibilityNotices = conversionNotices(profile),
                         hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
+                        failoverGroups = if (ProfileStore.report(File(profile.typed.path)).optString("format") == "surge") io.nekohasekai.sfa.surge.AndroidRuntimeFeatures.eligibleGroups(org.json.JSONObject(File(profile.typed.path).readText())) else emptyList(),
+                        enabledFailoverGroups = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").optJSONArray("failoverGroups")?.let { array -> (0 until array.length()).map { array.getString(it) }.toSet() } ?: emptySet(),
+                        refreshStatus = refreshStatus(profile),
                         name = profile.name,
                         originalName = profile.name,
                         icon = profile.icon,
@@ -118,6 +174,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         autoUpdate = typedProfile.autoUpdate,
                         originalAutoUpdate = typedProfile.autoUpdate,
                         autoUpdateInterval = typedProfile.autoUpdateInterval,
+                        autoUpdateIntervalInput = typedProfile.autoUpdateInterval.toString(),
                         originalAutoUpdateInterval = typedProfile.autoUpdateInterval,
                         lastUpdated = typedProfile.lastUpdated,
                         isLoading = false,
@@ -180,28 +237,31 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
 
     fun updateAutoUpdate(enabled: Boolean) {
         _uiState.update { state ->
-            state.copy(
+            // Do not leave a hidden invalid interval blocking the user's attempt to disable updates.
+            val interval = if (!enabled && state.autoUpdateIntervalError != null) state.originalAutoUpdateInterval else state.autoUpdateInterval
+            val updated = state.copy(
                 autoUpdate = enabled,
-                hasChanges =
-                checkHasChanges(
-                    state.copy(autoUpdate = enabled),
-                ),
+                autoUpdateInterval = interval,
+                autoUpdateIntervalInput = if (!enabled) interval.toString() else state.autoUpdateIntervalInput,
+                autoUpdateIntervalError = if (!enabled) null else state.autoUpdateIntervalError,
             )
+            updated.copy(hasChanges = checkHasChanges(updated))
         }
     }
 
     fun updateAutoUpdateInterval(interval: String) {
-        val intValue = interval.toIntOrNull() ?: 60
+        val intValue = interval.toIntOrNull() ?: 0
         val error =
             when {
                 interval.isBlank() -> getApplication<Application>().getString(R.string.profile_input_required)
-                intValue < 15 -> getApplication<Application>().getString(R.string.profile_auto_update_interval_minimum_hint)
+                intValue !in 15..10080 -> getApplication<Application>().getString(R.string.profile_interval_range)
                 else -> null
             }
 
         _uiState.update { state ->
             state.copy(
                 autoUpdateInterval = intValue,
+                autoUpdateIntervalInput = interval,
                 autoUpdateIntervalError = error,
                 hasChanges =
                 if (error == null) {
@@ -245,7 +305,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 ProfileManager.update(profile)
 
                 // Reconfigure updater if auto-update was enabled
-                if (autoUpdateChanged && state.autoUpdate) {
+                if (autoUpdateChanged || state.autoUpdateInterval != state.originalAutoUpdateInterval) {
                     UpdateProfileWork.reconfigureUpdater()
                 }
 
@@ -285,19 +345,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 var selectedProfileUpdated = false
 
                 // Fetch remote config
-                val content = ProfileStore.download(profile.typed.remoteURL)
-
-                // Check if content changed
-                val file = File(profile.typed.path)
-                if (ProfileStore.save(file, content)) {
+                if (io.nekohasekai.sfa.surge.ProfileRefresh.refresh(profile)) {
                     if (profile.id == Settings.selectedProfile) {
                         selectedProfileUpdated = true
                     }
                 }
-
-                // Update last updated time
-                profile.typed.lastUpdated = Date()
-                ProfileManager.update(profile)
 
                 // Update UI state with success indicator
                 _uiState.update {
@@ -305,13 +357,14 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         lastUpdated = profile.typed.lastUpdated,
                         isUpdating = false,
                         showUpdateSuccess = true,
+                        refreshStatus = refreshStatus(profile),
                         compatibilityNotices = conversionNotices(profile),
                         hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
                     )
                 }
 
                 // Reload service if needed
-                if (selectedProfileUpdated) {
+                if (selectedProfileUpdated && profile.id == Settings.selectedProfile) {
                     try {
                         Libbox.newStandaloneCommandClient().serviceReload()
                     } catch (e: Exception) {
@@ -322,6 +375,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         isUpdating = false,
+                        refreshStatus = refreshStatus(profile),
                         errorMessage = e.message,
                     )
                 }

@@ -65,3 +65,40 @@ adb -s SERIAL shell /data/local/tmp/surge-network-probe -url https://www.google.
 ```
 
 It uses Android CA roots with certificate verification enabled and fresh HTTP connections, and reports status, TLS verification, duration and DNS results. Its shell UID tests domain rules; it does not prove another app's package routing. Correlate that app's package and outbound connection IDs, then test its actual UI. An HTTP 403 challenge establishes reachability, not successful ChatGPT operation.
+
+## v1 additions in 1.14.4-surge.3
+
+| Method/path | Body | Result |
+|---|---|---|
+| GET /v1/mode | — | Current mode and supported mode list; empty while stopped |
+| POST /v1/mode | `{mode: "Rule" | "Global" | "Direct"}` | Requires Started; changes native mode and closes existing routed connections |
+| GET /v1/failover | — | Active profile's group health/switch reason, selected member and observation time when available |
+| GET /v1/boot | — | restoreOnBoot and lastRunning flags |
+| POST /v1/boot | `{restoreOnBoot: boolean}` | Saves the app boot-recovery preference; does not change system always-on VPN |
+| POST /v1/profiles/schedule | `{id, autoUpdate, intervalMinutes}` | Updates only this remote profile and reschedules background work; range 15–10080 minutes |
+| POST /v1/profiles/check-due | `{}` | Runs the same due/enabled checks as the background worker; does not force disabled or fresh profiles to update |
+
+GET /v1/profiles now includes each profile's `autoUpdate`, `intervalMinutes`, and `refresh` report (`attemptedAt`, `success`, optional `changed`/generic `message`). URL import accepts `autoUpdate` and `intervalMinutes`, defaulting to enabled and 360 minutes. Manual `profiles/update` works when autoUpdate is false. Existing intervals remain unchanged.
+
+Examples:
+
+```sh
+python3 tools/android-debug.py schedule 1 --auto on --interval 360
+python3 tools/android-debug.py schedule 2 --auto off --interval 1440
+python3 tools/android-debug.py update 2
+python3 tools/android-debug.py check-due
+python3 tools/android-debug.py mode Global
+python3 tools/android-debug.py mode Rule
+python3 tools/android-debug.py boot on
+python3 tools/android-debug.py failover
+```
+
+Failure-only switching is opt-in through the profile detail or `failoverGroups` in its Android overrides:
+
+```json
+{"policy":"Proxy","failoverGroups":["Proxy"]}
+```
+
+When using the API, merge this field into the existing overrides object; the endpoint replaces the whole object. The UI toggles preserve other Android routing/DNS settings. Selectors need at least two supported leaf proxy members; nested groups are rejected. An explicit DIRECT member is preserved for manual selection but never probed or selected automatically. Selecting it manually pauses failover for that group. Native HTTPS health probes run approximately once per minute with a 35-second result window. Two failed/timed-out rounds trigger the first freshly healthy backup in configuration order; measured latency is never read by the decision engine. There is a 120-second cooldown, no automatic failback, and no DIRECT fallback. Manual node selection resets consecutive-failure tracking. Direct mode suspends new probe rounds. Pending probes can finish after a mode change, but their results cannot trigger a switch. Native checks test TLS/HTTP reachability, not whether ChatGPT accepts an exit IP.
+
+The controller lives in the VPN service. Core probe results must be newer than the round start; changes of mode/selection invalidate in-flight rounds. State is visible in the active profile's detail and GET /v1/failover. This does not reinterpret an explicitly imported Surge `url-test` group as failure-only; use a `select` group for this feature.

@@ -2,6 +2,8 @@ package io.nekohasekai.sfa.debug
 
 import android.net.VpnService
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.LogEntry
+import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.bg.BoxService
@@ -14,13 +16,11 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.surge.ProfileStore
-import kotlinx.coroutines.runBlocking
+import io.nekohasekai.sfa.utils.CommandClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import io.nekohasekai.sfa.utils.CommandClient
-import io.nekohasekai.libbox.LogEntry
-import io.nekohasekai.libbox.OutboundGroup
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -41,14 +41,30 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     private const val PORT = 19090
     private val events = ArrayDeque<JSONObject>()
     private val mutationLock = Any()
+
     @Volatile private var observed: Status? = null
     private lateinit var connection: ServiceConnection
     private lateinit var token: String
     private val coreLogs = ArrayDeque<JSONObject>()
     private var logSequence = 0L
     private var groups = JSONArray()
-    private val coreClient = CommandClient(CoroutineScope(SupervisorJob() + Dispatchers.IO),
-        listOf(CommandClient.ConnectionType.Log, CommandClient.ConnectionType.Groups), this, localOnly = true)
+
+    @Volatile private var currentMode = ""
+
+    @Volatile private var availableModes = emptyList<String>()
+    override fun initializeClashMode(modeList: List<String>, currentMode: String) {
+        availableModes = modeList
+        this.currentMode = currentMode
+    }
+    override fun updateClashMode(newMode: String) {
+        currentMode = newMode
+    }
+    private val coreClient = CommandClient(
+        CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        listOf(CommandClient.ConnectionType.Log, CommandClient.ConnectionType.Groups, CommandClient.ConnectionType.ClashMode),
+        this,
+        localOnly = true,
+    )
 
     @Synchronized
     override fun appendLogs(message: List<LogEntry>) {
@@ -61,19 +77,24 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
             coreLogs.addLast(JSONObject().put("sequence", ++logSequence).put("level", entry.level).put("message", text))
         }
     }
+
     @Synchronized
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
-        groups = JSONArray(newGroups.map { group ->
-            val members = JSONArray()
-            val iterator = group.items
-            while (iterator.hasNext()) members.put(iterator.next().tag)
-            JSONObject().put("tag", group.tag).put("selected", group.selected)
-                .put("selectable", group.selectable).put("members", members)
-        })
+        groups = JSONArray(
+            newGroups.map { group ->
+                val members = JSONArray()
+                val iterator = group.items
+                while (iterator.hasNext()) members.put(iterator.next().tag)
+                JSONObject().put("tag", group.tag).put("selected", group.selected)
+                    .put("selectable", group.selectable).put("members", members)
+            },
+        )
     }
-    @Synchronized
-    override fun clearLogs() { coreLogs.clear() }
 
+    @Synchronized
+    override fun clearLogs() {
+        coreLogs.clear()
+    }
 
     fun start() {
         if (::connection.isInitialized) return
@@ -92,19 +113,34 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
                     event("ready")
                     while (true) {
                         val socket = server.accept()
-                        try { workers.execute { serve(socket) } }
-                        catch (_: java.util.concurrent.RejectedExecutionException) { socket.close() }
+                        try {
+                            workers.execute { serve(socket) }
+                        } catch (_: java.util.concurrent.RejectedExecutionException) {
+                            socket.close()
+                        }
                     }
                 }
-            } catch (_: Exception) { event("listener_failed") }
+            } catch (_: Exception) {
+                event("listener_failed")
+            }
         }, "SurgeDebugAPI").start()
     }
 
     override fun onServiceStatusChanged(status: Status) {
-        observed = status; event("service_${status.name.lowercase()}")
-        if (status == Status.Started) coreClient.connect() else if (status == Status.Stopped) coreClient.disconnect()
+        observed = status
+        event("service_${status.name.lowercase()}")
+        if (status == Status.Started) {
+            coreClient.connect()
+        } else if (status == Status.Stopped) {
+            coreClient.disconnect()
+            currentMode = ""
+            availableModes = emptyList()
+            synchronized(this) { groups = JSONArray() }
+        }
     }
-    override fun onServiceAlert(type: Alert, message: String?) { event("service_alert_${type.name}") }
+    override fun onServiceAlert(type: Alert, message: String?) {
+        event("service_alert_${type.name}")
+    }
 
     @Synchronized
     private fun event(code: String) {
@@ -150,14 +186,22 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
                 if (size !in 0..ProfileStore.MAX_BYTES) fail(413, "body_too_large")
                 val body = ByteArray(size)
                 var offset = 0
-                while (offset < size) { val read = input.read(body, offset, size - offset); if (read < 0) fail(400, "incomplete_body"); offset += read }
+                while (offset < size) {
+                    val read = input.read(body, offset, size - offset)
+                    if (read < 0) fail(400, "incomplete_body")
+                    offset += read
+                }
                 val method = request[0]
                 if (method !in setOf("GET", "POST")) fail(405, "method_not_allowed")
-                val result = if (method == "POST") synchronized(mutationLock) { runBlocking { route(method, request[1], body.toString(Charsets.UTF_8)) } }
-                    else runBlocking { route(method, request[1], "") }
+                val result = if (method == "POST") {
+                    synchronized(mutationLock) { runBlocking { route(method, request[1], body.toString(Charsets.UTF_8)) } }
+                } else {
+                    runBlocking { route(method, request[1], "") }
+                }
                 respond(socket, result.first, result.second)
-            } catch (e: Failure) { runCatching { respond(socket, e.status, JSONObject().put("error", e.code)) } }
-            catch (_: Exception) {
+            } catch (e: Failure) {
+                runCatching { respond(socket, e.status, JSONObject().put("error", e.code)) }
+            } catch (_: Exception) {
                 event("request_failed")
                 runCatching { respond(socket, 422, JSONObject().put("error", "operation_failed").put("detail", "No credentials or raw parser diagnostics are returned.")) }
             }
@@ -167,25 +211,45 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     private fun respond(socket: Socket, status: Int, data: JSONObject) {
         val bytes = data.toString().toByteArray(Charsets.UTF_8)
         val headers = "HTTP/1.1 $status Result\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
-        socket.getOutputStream().apply { write(headers.toByteArray()); write(bytes); flush() }
+        socket.getOutputStream().apply {
+            write(headers.toByteArray())
+            write(bytes)
+            flush()
+        }
     }
 
     private suspend fun route(method: String, path: String, raw: String): Pair<Int, JSONObject> {
         val app = Application.application
         fun ok(data: JSONObject = JSONObject().put("ok", true)) = 200 to data
-        if (method == "GET") return when (path) {
-            "/v1/health" -> ok(JSONObject().put("apiVersion", 1).put("appVersion", BuildConfig.VERSION_NAME).put("coreVersion", Libbox.version()))
-            "/v1/status" -> ok(JSONObject().put("service", observed?.name ?: "Unknown").put("selectedProfileId", Settings.selectedProfile)
-                .put("vpnPermissionGranted", VpnService.prepare(app) == null))
-            "/v1/profiles" -> ok(JSONObject().put("profiles", JSONArray(ProfileManager.list().map { profile ->
-                JSONObject().put("id", profile.id).put("type", profile.typed.type.name)
-                    .put("selected", profile.id == Settings.selectedProfile).put("updatedAt", profile.typed.lastUpdated.time)
-                    .put("conversion", ProfileStore.report(File(profile.typed.path)))
-            })))
-            "/v1/core-logs" -> ok(JSONObject().put("entries", synchronized(this) { JSONArray(coreLogs.toList()) }))
-            "/v1/groups" -> ok(JSONObject().put("groups", synchronized(this) { JSONArray(groups.toString()) }))
-            "/v1/logs" -> ok(JSONObject().put("events", synchronized(this) { JSONArray(events.toList()) }))
-            else -> fail(404, "not_found")
+        if (method == "GET") {
+            return when (path) {
+                "/v1/health" -> ok(JSONObject().put("apiVersion", 1).put("appVersion", BuildConfig.VERSION_NAME).put("coreVersion", Libbox.version()))
+                "/v1/status" -> ok(
+                    JSONObject().put("service", observed?.name ?: "Unknown").put("selectedProfileId", Settings.selectedProfile)
+                        .put("vpnPermissionGranted", VpnService.prepare(app) == null),
+                )
+                "/v1/profiles" -> ok(
+                    JSONObject().put(
+                        "profiles",
+                        JSONArray(
+                            ProfileManager.list().map { profile ->
+                                JSONObject().put("id", profile.id).put("type", profile.typed.type.name)
+                                    .put("selected", profile.id == Settings.selectedProfile).put("updatedAt", profile.typed.lastUpdated.time)
+                                    .put("autoUpdate", profile.typed.autoUpdate).put("intervalMinutes", profile.typed.autoUpdateInterval)
+                                    .put("refresh", io.nekohasekai.sfa.surge.ProfileRefresh.report(profile))
+                                    .put("conversion", ProfileStore.report(File(profile.typed.path)))
+                            },
+                        ),
+                    ),
+                )
+                "/v1/mode" -> ok(JSONObject().put("current", currentMode).put("available", JSONArray(availableModes)))
+                "/v1/failover" -> ok(io.nekohasekai.sfa.bg.FailoverController.report())
+                "/v1/boot" -> ok(JSONObject().put("restoreOnBoot", Settings.restoreOnBoot).put("lastRunning", Settings.startedByUser))
+                "/v1/core-logs" -> ok(JSONObject().put("entries", synchronized(this) { JSONArray(coreLogs.toList()) }))
+                "/v1/groups" -> ok(JSONObject().put("groups", synchronized(this) { JSONArray(groups.toString()) }))
+                "/v1/logs" -> ok(JSONObject().put("events", synchronized(this) { JSONArray(events.toList()) }))
+                else -> fail(404, "not_found")
+            }
         }
         val body = if (raw.isBlank()) JSONObject() else JSONObject(raw)
         when (path) {
@@ -194,9 +258,11 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
                 val typed = TypedProfile().apply {
                     this.path = File(File(app.filesDir, "configs"), "${UUID.randomUUID()}.json").path
                     if (body.has("url")) {
-                        type = TypedProfile.Type.Remote; remoteURL = body.getString("url"); autoUpdate = true
-                        autoUpdateInterval = body.optInt("intervalMinutes", 60)
-                        if (autoUpdateInterval < 15) fail(400, "interval_minimum_15_minutes")
+                        type = TypedProfile.Type.Remote
+                        remoteURL = body.getString("url")
+                        autoUpdate = body.optBoolean("autoUpdate", true)
+                        autoUpdateInterval = body.optInt("intervalMinutes", 360)
+                        if (autoUpdateInterval !in 15..10080) fail(400, "interval_minimum_15_minutes")
                     }
                     lastUpdated = Date()
                 }
@@ -208,15 +274,44 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
                 event("profile_imported")
                 return 201 to JSONObject().put("id", profile.id).put("conversion", ProfileStore.report(File(typed.path)))
             }
+            "/v1/mode" -> {
+                if (observed != Status.Started) fail(409, "service_not_started")
+                val mode = body.getString("mode")
+                if (mode !in availableModes) fail(400, "unsupported_mode")
+                Libbox.newStandaloneCommandClient().setClashMode(mode)
+                Libbox.newStandaloneCommandClient().closeConnections()
+                return ok()
+            }
+            "/v1/boot" -> {
+                Settings.restoreOnBoot = body.getBoolean("restoreOnBoot")
+                Settings.dataStore.flush()
+                return ok()
+            }
+            "/v1/profiles/check-due" -> {
+                return ok(JSONObject().put("success", io.nekohasekai.sfa.bg.refreshDueProfiles()))
+            }
+            "/v1/profiles/schedule" -> {
+                val profile = ProfileManager.get(body.getLong("id")) ?: fail(404, "profile_not_found")
+                if (profile.typed.type != TypedProfile.Type.Remote) fail(409, "remote_profile_required")
+                val interval = body.getInt("intervalMinutes")
+                if (interval !in 15..10080) fail(400, "interval_range_15_to_10080_minutes")
+                profile.typed.autoUpdate = body.getBoolean("autoUpdate")
+                profile.typed.autoUpdateInterval = interval
+                ProfileManager.update(profile)
+                UpdateProfileWork.reconfigureUpdater()
+                return ok()
+            }
             "/v1/profiles/overrides" -> {
                 val profile = ProfileManager.get(body.getLong("id")) ?: fail(404, "profile_not_found")
                 val file = File(profile.typed.path)
                 val changed = ProfileStore.save(file, ProfileStore.source(file), body.getJSONObject("overrides"))
                 ProfileManager.update(profile)
                 event("profile_overrides_updated")
-                return ok(JSONObject().put("changed", changed)
-                    .put("reloadRequired", changed && profile.id == Settings.selectedProfile && observed == Status.Started)
-                    .put("conversion", ProfileStore.report(file)))
+                return ok(
+                    JSONObject().put("changed", changed)
+                        .put("reloadRequired", changed && profile.id == Settings.selectedProfile && observed == Status.Started)
+                        .put("conversion", ProfileStore.report(file)),
+                )
             }
             "/v1/groups/select" -> {
                 if (observed != Status.Started) fail(409, "service_not_started")
@@ -238,18 +333,21 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
             }
             "/v1/profiles/update" -> {
                 val profile = ProfileManager.get(body.getLong("id")) ?: fail(404, "profile_not_found")
-                val source = if (body.has("source")) {
+                val changed = if (body.has("source")) {
                     if (profile.typed.type != TypedProfile.Type.Local) fail(409, "remote_profile_requires_url_refresh")
-                    body.getString("source")
+                    ProfileStore.save(File(profile.typed.path), body.getString("source")).also {
+                        profile.typed.lastUpdated = Date()
+                        ProfileManager.update(profile)
+                    }
                 } else {
                     if (profile.typed.type != TypedProfile.Type.Remote) fail(400, "local_profile_requires_source")
-                    ProfileStore.download(profile.typed.remoteURL)
+                    io.nekohasekai.sfa.surge.ProfileRefresh.refresh(profile)
                 }
-                val changed = ProfileStore.save(File(profile.typed.path), source)
-                profile.typed.lastUpdated = Date(); ProfileManager.update(profile)
                 event("profile_updated")
-                return ok(JSONObject().put("changed", changed).put("reloadRequired", changed && Settings.selectedProfile == profile.id && observed == Status.Started)
-                    .put("conversion", ProfileStore.report(File(profile.typed.path))))
+                return ok(
+                    JSONObject().put("changed", changed).put("reloadRequired", changed && Settings.selectedProfile == profile.id && observed == Status.Started)
+                        .put("conversion", ProfileStore.report(File(profile.typed.path))),
+                )
             }
             "/v1/service/start" -> {
                 if (observed != Status.Stopped) fail(409, "service_not_stopped")

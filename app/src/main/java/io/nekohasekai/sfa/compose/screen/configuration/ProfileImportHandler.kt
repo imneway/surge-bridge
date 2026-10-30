@@ -256,7 +256,7 @@ class ProfileImportHandler(private val context: Context) {
                 type = TypedProfile.Type.Remote
                 remoteURL = url
                 autoUpdate = true
-                autoUpdateInterval = 60
+                autoUpdateInterval = 360
                 lastUpdated = Date()
             }
 
@@ -326,35 +326,33 @@ class ProfileImportHandler(private val context: Context) {
         return io.nekohasekai.sfa.surge.SurgeConverter.isSurge(content) || trimmed.startsWith("{")
     }
 
-    private suspend fun importJsonConfiguration(jsonContent: String, profileName: String): ImportResult {
-        return try {
-            // Create a local profile with the JSON configuration
-            val typedProfile =
-                TypedProfile().apply {
-                    type = TypedProfile.Type.Local
-                }
+    private suspend fun importJsonConfiguration(jsonContent: String, profileName: String): ImportResult = try {
+        // Create a local profile with the JSON configuration
+        val typedProfile =
+            TypedProfile().apply {
+                type = TypedProfile.Type.Local
+            }
 
-            val profile =
-                Profile(
-                    name = profileName.ifEmpty { "Imported Profile" },
-                    typed = typedProfile,
-                ).apply {
-                    userOrder = ProfileManager.nextOrder()
-                }
+        val profile =
+            Profile(
+                name = profileName.ifEmpty { "Imported Profile" },
+                typed = typedProfile,
+            ).apply {
+                userOrder = ProfileManager.nextOrder()
+            }
 
-            // Save the configuration file
-            val fileID = ProfileManager.nextFileID()
-            val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
-            val configFile = File(configDirectory, "$fileID.json")
-            ProfileStore.save(configFile, jsonContent)
-            typedProfile.path = configFile.path
+        // Save the configuration file
+        val fileID = ProfileManager.nextFileID()
+        val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
+        val configFile = File(configDirectory, "$fileID.json")
+        ProfileStore.save(configFile, jsonContent)
+        typedProfile.path = configFile.path
 
-            // Create profile in database and select it
-            ProfileManager.create(profile, andSelect = true)
+        // Create profile in database and select it
+        ProfileManager.create(profile, andSelect = true)
 
-            ImportResult.Success(profile)
-        } catch (e: Exception) {
-            ImportResult.Error(e.message ?: "Unknown error importing JSON configuration")
-        }
+        ImportResult.Success(profile)
+    } catch (e: Exception) {
+        ImportResult.Error(e.message ?: "Unknown error importing JSON configuration")
     }
 }

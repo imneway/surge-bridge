@@ -29,7 +29,8 @@ data class NewProfileUiState(
     // Remote profile fields
     val remoteUrl: String = "",
     val autoUpdate: Boolean = true,
-    val autoUpdateInterval: Int = 60,
+    val autoUpdateInterval: Int = 360,
+    val autoUpdateIntervalInput: String = "360",
     // File import
     val importUri: Uri? = null,
     val importFileName: String? = null,
@@ -61,8 +62,10 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
     private val _uiState = MutableStateFlow(NewProfileUiState())
     val uiState: StateFlow<NewProfileUiState> = _uiState.asStateFlow()
 
+    private var initializedImport = false
     fun initializeFromQRImport(name: String?, url: String?) {
-        if (name != null && url != null) {
+        if (!initializedImport && name != null && url != null) {
+            initializedImport = true
             _uiState.update {
                 it.copy(
                     name = name,
@@ -74,6 +77,8 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun initializeFromQRSImport(name: String?, qrsData: ByteArray) {
+        if (initializedImport) return
+        initializedImport = true
         _uiState.update {
             it.copy(
                 name = name ?: "",
@@ -120,8 +125,8 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun updateAutoUpdateInterval(interval: String) {
-        val intValue = interval.toIntOrNull() ?: 60
-        _uiState.update { it.copy(autoUpdateInterval = intValue.coerceAtLeast(15)) }
+        val intValue = interval.toIntOrNull() ?: 0
+        _uiState.update { it.copy(autoUpdateInterval = intValue, autoUpdateIntervalInput = interval) }
     }
 
     fun setImportUri(uri: Uri, fileName: String?) {
@@ -181,6 +186,10 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
+        if (state.profileType == ProfileType.Remote && state.autoUpdateInterval !in 15..10080) {
+            _uiState.update { it.copy(errorMessage = context.getString(R.string.profile_interval_range)) }
+            hasError = true
+        }
         if (hasError) {
             return false
         }

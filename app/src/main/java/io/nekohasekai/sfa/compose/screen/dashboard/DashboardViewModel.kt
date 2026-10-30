@@ -12,11 +12,11 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.surge.ProfileStore
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
-import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -351,15 +351,7 @@ class DashboardViewModel :
 
             try {
                 // Fetch remote config
-                val content = ProfileStore.download(profile.typed.remoteURL)
-
-                // Check if content changed
-                val file = File(profile.typed.path)
-                val contentChanged = ProfileStore.save(file, content)
-
-                // Update last updated time
-                profile.typed.lastUpdated = Date()
-                ProfileManager.update(profile)
+                val contentChanged = io.nekohasekai.sfa.surge.ProfileRefresh.refresh(profile)
 
                 if (contentChanged && profile.id == Settings.selectedProfile) {
                     try {
@@ -554,6 +546,7 @@ class DashboardViewModel :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 CommandTarget.standaloneClient().setClashMode(mode)
+                CommandTarget.standaloneClient().closeConnections()
                 // Update UI state directly without reconnecting
                 withContext(Dispatchers.Main) {
                     updateState {

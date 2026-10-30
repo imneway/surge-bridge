@@ -746,4 +746,25 @@
     <string name="surge_configuration">Surge Configuration</string>
     <string name="clear_android_routing_overrides">Remove Android routing overrides</string>
     <string name="android_overrides_restart">Settings saved. Start or restart the VPN to apply them.</string>
+    <string name="profile_add_url">Import from URL</string>
+    <string name="profile_add_url_description">Download a Surge configuration and choose updates for this profile</string>
+    <string name="restore_vpn_on_boot">Restore connection after reboot</string>
+    <string name="restore_vpn_on_boot_description">Restore only if the VPN was running before reboot. Stopping it disables recovery until the next start.</string>
+    <string name="system_always_on_vpn">System always-on VPN settings</string>
+    <string name="failure_only_failover">Failure-only switching</string>
+    <string name="failure_only_failover_description">Check about every minute. Switch after two failed rounds to the first available backup in configuration order. Keep healthy nodes; no faster-node selection, automatic failback or DIRECT fallback. Paused in Direct mode. Existing connections may reconnect.</string>
+    <string name="failover_save_failed">Unable to save failure-only switching. Previous settings retained.</string>
+    <string name="profile_refresh_failed">Update failed; previous configuration retained</string>
+    <string name="profile_refresh_changed">Configuration updated</string>
+    <string name="profile_refresh_unchanged">Checked; no changes</string>
+    <string name="profile_update_this_only">Automatically update this profile only</string>
+    <string name="profile_interval_range">Update interval must be 15–10080 minutes</string>
+    <string name="failover_healthy">Current node is healthy</string>
+    <string name="failover_all_failed">No healthy backup; keeping current node</string>
+    <string name="failover_switched">Switched after consecutive failures</string>
+    <string name="failover_first_failure">First failed check; awaiting confirmation</string>
+    <string name="failover_paused">Paused in Direct mode</string>
+    <string name="failover_cooldown">Waiting after a recent switch</string>
+    <string name="failover_probing">Checking connectivity</string>
+    <string name="failover_waiting">Waiting for the VPN or next check</string>
 </resources>

@@ -119,7 +119,28 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         this.commandServer = commandServer
     }
 
+    private fun applyConfiguration(profile: io.nekohasekai.sfa.database.Profile, content: String, options: OverrideOptions) {
+        val file = File(profile.typed.path)
+        try {
+            commandServer.startOrReloadService(content, options)
+        } catch (failure: Exception) {
+            if (!io.nekohasekai.sfa.surge.ProfileStore.restoreRunning(file)) throw failure
+            commandServer.startOrReloadService(file.readText(), options)
+            io.nekohasekai.sfa.surge.ProfileRefresh.recordApplyRollback(profile)
+            android.util.Log.w(TAG, "Core reload failed; last running configuration restored")
+        }
+        runCatching { io.nekohasekai.sfa.surge.ProfileStore.markRunning(file) }
+            .onFailure { android.util.Log.w(TAG, "Unable to save last-running configuration backup") }
+    }
+
     private var lastProfileName = ""
+    private var failover: FailoverController? = null
+    private fun startFailover(profile: io.nekohasekai.sfa.database.Profile) {
+        failover?.close()
+        val options = io.nekohasekai.sfa.surge.ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides")
+        val groups = options.optJSONArray("failoverGroups")
+        failover = FailoverController(if (groups == null) emptyList() else (0 until groups.length()).map { groups.getString(it) }).also { it.start() }
+    }
 
     private suspend fun startService() {
         try {
@@ -135,6 +156,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
 
+            io.nekohasekai.sfa.surge.ProfileStore.ensureRuntimeFeatures(File(profile.typed.path))
             val content = File(profile.typed.path).readText()
             if (content.isBlank()) {
                 stopAndAlert(Alert.EmptyConfiguration)
@@ -149,7 +171,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             DefaultNetworkMonitor.start()
 
             try {
-                commandServer.startOrReloadService(
+                applyConfiguration(
+                    profile,
                     content,
                     OverrideOptions().apply {
                         autoRedirect = Settings.autoRedirect
@@ -183,11 +206,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 }
             }
 
+            startFailover(profile)
             status.postValue(Status.Started)
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_started)
             }
             notification.start()
+            UpdateProfileWork.checkDueSoon()
         } catch (e: Exception) {
             stopAndAlert(Alert.StartService, e.message)
             return
@@ -212,6 +237,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     suspend fun serviceReload0() {
+        failover?.close()
         val selectedProfileId = Settings.selectedProfile
         if (selectedProfileId == -1L) {
             stopAndAlert(Alert.EmptyConfiguration)
@@ -224,6 +250,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             return
         }
 
+        io.nekohasekai.sfa.surge.ProfileStore.ensureRuntimeFeatures(File(profile.typed.path))
         val content = File(profile.typed.path).readText()
         if (content.isBlank()) {
             stopAndAlert(Alert.EmptyConfiguration)
@@ -231,7 +258,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         lastProfileName = profile.name
         try {
-            commandServer.startOrReloadService(
+            applyConfiguration(
+                profile,
                 content,
                 OverrideOptions().apply {
                     autoRedirect = Settings.autoRedirect
@@ -262,6 +290,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
         }
+        startFailover(profile)
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {
@@ -288,6 +317,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private fun stopService() {
         if (status.value != Status.Started) return
         status.value = Status.Stopping
+        failover?.close()
         if (receiverRegistered) {
             service.unregisterReceiver(receiver)
             receiverRegistered = false
@@ -317,6 +347,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private fun closeService() {
+        failover?.close()
+        failover = null
         runCatching {
             commandServer.closeService()
         }.onFailure {
@@ -390,6 +422,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     internal fun onBind(): IBinder = binder
 
     internal fun onDestroy() {
+        failover?.close()
         idleModeUpdates.cancel()
         idleModeScope.cancel()
         binder.close()

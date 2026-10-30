@@ -17,9 +17,10 @@ object ProfileStore {
     fun validate(source: String): SurgeConverter.Result = compile(source).first
 
     @Synchronized
-    fun save(file: File, source: String): Boolean {
-        val (result, pending) = compile(source)
+    fun save(file: File, source: String, overrides: JSONObject? = null): Boolean {
         val previous = if (file.exists()) file.readText() else ""
+        val effectiveOverrides = overrides ?: snapshots(file).optJSONObject(SurgeConverter.digest(previous))?.optJSONObject("androidOverrides") ?: JSONObject()
+        val (result, pending) = compile(source, effectiveOverrides)
         val digest = SurgeConverter.digest(result.json)
         val oldDigest = SurgeConverter.digest(previous)
         val oldSnapshots = snapshots(file)
@@ -27,7 +28,7 @@ object ProfileStore {
         // writes still finds the correct source by digest, never by a stale sidecar filename.
         val retained = JSONObject()
         oldSnapshots.optJSONObject(oldDigest)?.let { retained.put(oldDigest, it) }
-        retained.put(digest, obj("source" to source, "format" to result.sourceFormat, "warnings" to result.warnings))
+        retained.put(digest, obj("source" to source, "format" to result.sourceFormat, "warnings" to result.warnings, "androidOverrides" to effectiveOverrides))
         atomicWrite(snapshotFile(file), retained.toString())
         if (previous != result.json) atomicWrite(file, result.json)
         // Cache failures cannot turn a successfully published profile into a reported failure.
@@ -47,19 +48,21 @@ object ProfileStore {
         val snapshot = snapshots(file).optJSONObject(SurgeConverter.digest(runtime))
         return obj("format" to (snapshot?.optString("format") ?: "sing-box"),
             "warnings" to (snapshot?.optJSONArray("warnings") ?: JSONArray()),
-            "runtimeSha256" to SurgeConverter.digest(runtime))
+            "runtimeSha256" to SurgeConverter.digest(runtime),
+            "androidOverrides" to (snapshot?.optJSONObject("androidOverrides") ?: JSONObject()))
     }
 
-    private fun compile(source: String): Pair<SurgeConverter.Result, Map<File, String>> {
+    private fun compile(source: String, overrides: JSONObject = JSONObject()): Pair<SurgeConverter.Result, Map<File, String>> {
         require(source.toByteArray().size <= MAX_BYTES) { "Configuration exceeds 16 MiB" }
         val pending = linkedMapOf<File, String>()
         val cacheDir = File(Application.application.filesDir, "surge-rule-cache")
-        val result = SurgeConverter { url, ttl ->
+        val converted = SurgeConverter { url, ttl ->
             val cache = File(cacheDir, SurgeConverter.digest(url))
             val age = System.currentTimeMillis() - cache.lastModified()
             if (cache.isFile && age in 0 until ttl.toLong() * 1000) cache.readText()
             else pending.getOrPut(cache) { download(url) }
         }.convert(source)
+        val result = AndroidRoutingOverrides.apply(converted, overrides)
         try {
             Libbox.checkConfig(result.json)
         } catch (_: Exception) {

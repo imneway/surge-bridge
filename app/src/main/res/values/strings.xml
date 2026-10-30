@@ -744,4 +744,6 @@
     <string name="endpoint_browser_too_many_windows">The authentication page opened too many browser windows.</string>
     <string name="endpoint_browser_profile_unavailable">Browser authentication is unavailable on this device.</string>
     <string name="surge_configuration">Surge Configuration</string>
+    <string name="clear_android_routing_overrides">Remove Android routing overrides</string>
+    <string name="android_overrides_restart">Settings saved. Start or restart the VPN to apply them.</string>
 </resources>

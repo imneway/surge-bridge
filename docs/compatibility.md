@@ -27,6 +27,8 @@
 
 域名分流使用 fake-IP 恢复域名，并由内核在需要时解析真实 IP。原始域名/IP 规则顺序保持；外部同一策略规则集内部按“不需要 DNS”和“需要 DNS”两组建立索引。这允许域名命中先返回，但与 Surge 精确的 DNS 失败/竞速行为并非完全等价。
 
+Android 可选覆盖设置独立于 Surge 原文保存，并随同一配置的编辑和订阅刷新保留。包名与域名规则置于原规则之前（DNS 劫持除外）；可让 ChatGPT/Chrome 的纯 IP 连接也使用指定策略，并避免 Google/OpenAI 域名在 GEOIP 阶段被提前解析为错误 IP。配置详情展示覆盖范围并支持移除。可选的代理 HTTPS DNS 不替换节点启动解析器；详见 [debug-api.md](debug-api.md)。
+
 参考：
 
 - [Surge 外部规则集格式及非法行行为](https://manual.nssurge.com/rules/ruleset.html)

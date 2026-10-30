@@ -676,4 +676,6 @@
     <string name="taildrop_open_app">開啟 sing-box</string>
     <string name="taildrop_notification_title">正在傳送檔案</string>
     <string name="surge_configuration">Surge 設定</string>
+    <string name="clear_android_routing_overrides">移除 Android 分流覆寫</string>
+    <string name="android_overrides_restart">設定已儲存，請啟動或重新啟動 VPN 以生效。</string>
 </resources>

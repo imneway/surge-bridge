@@ -15,6 +15,12 @@ import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.libbox.LogEntry
+import io.nekohasekai.libbox.OutboundGroup
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -31,13 +37,43 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** Debug variant only. adb forward + run-as authenticate access; no config bodies in responses. */
-object DebugBridge : ServiceConnection.Callback {
+object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     private const val PORT = 19090
     private val events = ArrayDeque<JSONObject>()
     private val mutationLock = Any()
     @Volatile private var observed: Status? = null
     private lateinit var connection: ServiceConnection
     private lateinit var token: String
+    private val coreLogs = ArrayDeque<JSONObject>()
+    private var logSequence = 0L
+    private var groups = JSONArray()
+    private val coreClient = CommandClient(CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        listOf(CommandClient.ConnectionType.Log, CommandClient.ConnectionType.Groups), this, localOnly = true)
+
+    @Synchronized
+    override fun appendLogs(message: List<LogEntry>) {
+        for (entry in message) {
+            if (coreLogs.size >= 2500) coreLogs.removeFirst()
+            // Only runtime events are exposed. Never emit configuration/parser dumps.
+            val text = entry.message.replace(Regex("\u001B\\[[0-9;]*m"), "").take(3000)
+                .replace(Regex("(https?://[^\\s?]+)\\?[^\\s]+"), "$1?<redacted>")
+            if (text.contains("psk", ignoreCase = true) || text.contains("password", ignoreCase = true)) continue
+            coreLogs.addLast(JSONObject().put("sequence", ++logSequence).put("level", entry.level).put("message", text))
+        }
+    }
+    @Synchronized
+    override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
+        groups = JSONArray(newGroups.map { group ->
+            val members = JSONArray()
+            val iterator = group.items
+            while (iterator.hasNext()) members.put(iterator.next().tag)
+            JSONObject().put("tag", group.tag).put("selected", group.selected)
+                .put("selectable", group.selectable).put("members", members)
+        })
+    }
+    @Synchronized
+    override fun clearLogs() { coreLogs.clear() }
+
 
     fun start() {
         if (::connection.isInitialized) return
@@ -64,7 +100,10 @@ object DebugBridge : ServiceConnection.Callback {
         }, "SurgeDebugAPI").start()
     }
 
-    override fun onServiceStatusChanged(status: Status) { observed = status; event("service_${status.name.lowercase()}") }
+    override fun onServiceStatusChanged(status: Status) {
+        observed = status; event("service_${status.name.lowercase()}")
+        if (status == Status.Started) coreClient.connect() else if (status == Status.Stopped) coreClient.disconnect()
+    }
     override fun onServiceAlert(type: Alert, message: String?) { event("service_alert_${type.name}") }
 
     @Synchronized
@@ -143,6 +182,8 @@ object DebugBridge : ServiceConnection.Callback {
                     .put("selected", profile.id == Settings.selectedProfile).put("updatedAt", profile.typed.lastUpdated.time)
                     .put("conversion", ProfileStore.report(File(profile.typed.path)))
             })))
+            "/v1/core-logs" -> ok(JSONObject().put("entries", synchronized(this) { JSONArray(coreLogs.toList()) }))
+            "/v1/groups" -> ok(JSONObject().put("groups", synchronized(this) { JSONArray(groups.toString()) }))
             "/v1/logs" -> ok(JSONObject().put("events", synchronized(this) { JSONArray(events.toList()) }))
             else -> fail(404, "not_found")
         }
@@ -166,6 +207,26 @@ object DebugBridge : ServiceConnection.Callback {
                 UpdateProfileWork.reconfigureUpdater()
                 event("profile_imported")
                 return 201 to JSONObject().put("id", profile.id).put("conversion", ProfileStore.report(File(typed.path)))
+            }
+            "/v1/profiles/overrides" -> {
+                val profile = ProfileManager.get(body.getLong("id")) ?: fail(404, "profile_not_found")
+                val file = File(profile.typed.path)
+                val changed = ProfileStore.save(file, ProfileStore.source(file), body.getJSONObject("overrides"))
+                ProfileManager.update(profile)
+                event("profile_overrides_updated")
+                return ok(JSONObject().put("changed", changed)
+                    .put("reloadRequired", changed && profile.id == Settings.selectedProfile && observed == Status.Started)
+                    .put("conversion", ProfileStore.report(file)))
+            }
+            "/v1/groups/select" -> {
+                if (observed != Status.Started) fail(409, "service_not_started")
+                Libbox.newStandaloneCommandClient().selectOutbound(body.getString("group"), body.getString("outbound"))
+                event("outbound_selected")
+                return ok()
+            }
+            "/v1/core-logs/clear" -> {
+                synchronized(this) { coreLogs.clear() }
+                return ok()
             }
             "/v1/profiles/select" -> {
                 if (observed != Status.Stopped) fail(409, "stop_service_before_selection")

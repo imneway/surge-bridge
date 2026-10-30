@@ -29,6 +29,7 @@ import java.util.Locale
 data class EditProfileUiState(
     val profile: Profile? = null,
     val compatibilityNotices: String = "",
+    val hasAndroidOverrides: Boolean = false,
     val name: String = "",
     val icon: String? = null,
     val profileType: TypedProfile.Type? = null,
@@ -68,6 +69,25 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
         return "Surge configuration" + (0 until notices.length()).joinToString("") { "\n• " + notices.getString(it) }
     }
 
+    fun clearAndroidOverrides() {
+        val profile = _uiState.value.profile ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isSaving = true) }
+            try {
+                val file = File(profile.typed.path)
+                ProfileStore.save(file, ProfileStore.source(file), org.json.JSONObject())
+                ProfileManager.update(profile)
+                val reloadFailed = profile.id == Settings.selectedProfile &&
+                    runCatching { Libbox.newStandaloneCommandClient().serviceReload() }.isFailure
+                _uiState.update { it.copy(isSaving = false, compatibilityNotices = conversionNotices(profile),
+                    hasAndroidOverrides = false,
+                    errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, errorMessage = e.message) }
+            }
+        }
+    }
+
     fun loadProfile(profileId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -87,6 +107,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                     it.copy(
                         profile = profile,
                         compatibilityNotices = conversionNotices(profile),
+                        hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
                         name = profile.name,
                         originalName = profile.name,
                         icon = profile.icon,
@@ -285,6 +306,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         isUpdating = false,
                         showUpdateSuccess = true,
                         compatibilityNotices = conversionNotices(profile),
+                        hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
                     )
                 }
 

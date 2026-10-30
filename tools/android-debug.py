@@ -18,7 +18,10 @@ p.add_argument('--adb', default=str(ROOT / '.local-tools/android-sdk/platform-to
 p.add_argument('--serial', help='Required when more than one device is connected')
 sub = p.add_subparsers(dest='command', required=True)
 install = sub.add_parser('install'); install.add_argument('apk')
-sub.add_parser('status'); sub.add_parser('profiles'); sub.add_parser('logs')
+sub.add_parser('status'); sub.add_parser('profiles'); sub.add_parser('logs'); sub.add_parser('groups')
+core_logs = sub.add_parser('core-logs'); core_logs.add_argument('output')
+overrides = sub.add_parser('overrides'); overrides.add_argument('id', type=int); overrides.add_argument('file', help='JSON override settings; {} removes overrides')
+node = sub.add_parser('node'); node.add_argument('group'); node.add_argument('outbound')
 sub.add_parser('start'); sub.add_parser('stop'); sub.add_parser('reload')
 select = sub.add_parser('select'); select.add_argument('id', type=int)
 imp = sub.add_parser('import'); imp.add_argument('file'); imp.add_argument('--name', default='Work')
@@ -83,6 +86,13 @@ try:
                 time.sleep(.5); result = api('status')
                 if result.get('service') == expected: break
             if result.get('service') != expected: raise RuntimeError('Service did not reach expected state; inspect logs')
+        elif command == 'core-logs':
+            data = json.dumps(api('core-logs'), ensure_ascii=False, indent=2).encode()
+            fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'wb') as f: f.write(data)
+            result = {'saved': True, 'entriesMayContainBrowsingMetadata': True}
+        elif command == 'overrides': result = api('profiles/overrides', {'id': args.id, 'overrides': json.loads(Path(args.file).read_text())})
+        elif command == 'node': result = api('groups/select', {'group': args.group, 'outbound': args.outbound})
         elif command == 'select': result = api('profiles/select', {'id': args.id})
         elif command == 'import': result = api('profiles/import', {'name': args.name, 'source': Path(args.file).read_text()})
         elif command == 'subscribe': result = api('profiles/import', {'name': args.name, 'url': Path(args.url_file).read_text().strip()})

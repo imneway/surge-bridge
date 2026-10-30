@@ -45,16 +45,20 @@ bash tools/build-android.sh
 
 ## 自动调试
 
-见 [debug-api.md](debug-api.md)。API 只在 debug 变体启动；release 使用空实现。只监听 Android `127.0.0.1:19090`，每次应用进程启动生成新的 bearer token，电脑经 `adb forward` 和 `run-as` 访问。API 不返回源配置、PSK、订阅 URL 或原始内核错误。
+见 [debug-api.md](debug-api.md)。API 只在 debug 变体启动；release 使用空实现。只监听 Android `127.0.0.1:19090`，每次应用进程启动生成新的 bearer token，电脑经 `adb forward` 和 `run-as` 访问。API 不返回源配置、PSK、订阅 URL 或配置解析器原始错误。新增的 core-logs 接口会包含访问目标、节点标签等敏感元数据，保存后需脱敏再分享。
 
 ```sh
-python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-arm64-v8a-debug.apk
+python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.2-arm64-v8a-debug.apk
 python3 tools/android-debug.py import /path/to/Work.conf
 python3 tools/android-debug.py select 1
 python3 tools/android-debug.py start
 python3 tools/android-debug.py status
 python3 tools/android-debug.py logs
 python3 tools/android-debug.py update 1 --file /path/to/Work.conf
+python3 tools/android-debug.py reload
+python3 tools/android-debug.py groups
+python3 tools/android-debug.py core-logs .private/core.json
+python3 tools/android-debug.py overrides 1 /path/to/android-settings.json
 python3 tools/android-debug.py reload
 python3 tools/android-debug.py logcat .private/device.log
 ```
@@ -70,3 +74,9 @@ python3 tools/android-debug.py logcat .private/device.log
 - 私有真实配置验证报告保存在 `.private/`。实际节点连通性与受控协议测试分别记录，不能互相替代。
 
 详见 [compatibility.md](compatibility.md) 和 [validation.md](validation.md)。
+
+## 真机修正（1.14.4-surge.2）
+
+OPPO Android 17 真机验证发现：原目标 DNS 返回错误 IP，且 `IP-CIDR,0.0.0.0/0,DIRECT,no-resolve` 会让 ChatGPT 的纯 IP 连接直连。为此增加独立的 Android 包名/域名/代理 DNS 设置，原始 Surge 文件不改。当前测试配置让 Chrome 和 ChatGPT 全部流量使用 Proxy，Google/OpenAI 域名在 IP/GEOIP 之前匹配；默认目标 DNS 使用代理内 HTTPS。节点解析器保持原配置，避免循环依赖。
+
+这些设置可由 debug API 写入，在配置详情里可见并可移除；同一配置的源文件更新保留它们。重新导入为新配置不会自动套用。Google 三个 Snell v6 节点和网络切换测试、ChatGPT 实际回复已在真机验证，具体范围见 [validation.md](validation.md)。

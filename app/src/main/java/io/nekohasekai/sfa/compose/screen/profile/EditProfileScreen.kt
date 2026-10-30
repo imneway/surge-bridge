@@ -216,6 +216,11 @@ fun EditProfileScreen(
                 if (uiState.compatibilityNotices.isNotEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Text(uiState.compatibilityNotices, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                        if (uiState.hasAndroidOverrides) {
+                            TextButton(onClick = viewModel::clearAndroidOverrides, enabled = !uiState.isSaving) {
+                                Text(stringResource(R.string.clear_android_routing_overrides))
+                            }
+                        }
                     }
                 }
 

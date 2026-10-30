@@ -11,6 +11,11 @@ Use `adb forward tcp:0 tcp:19090`, then connect to the allocated computer port w
 | GET /v1/health | — | API/app/core versions |
 | GET /v1/status | — | Observed service state, selected profile ID, VPN permission |
 | GET /v1/profiles | — | IDs, types, update time, selection, conversion warnings/hash; no names/URLs/credentials |
+| GET /v1/core-logs | — | Last 2500 runtime log entries; sequence/level/message; sensitive destination metadata |
+| GET /v1/groups | — | Group tags, selected member, members, selectable flag |
+| POST /v1/core-logs/clear | `{}` | Clear collected runtime log buffer |
+| POST /v1/groups/select | `{group, outbound}` | Select a node while Started; verify subsequent traffic |
+| POST /v1/profiles/overrides | `{id, overrides}` | Validate and save Android settings; changed/reloadRequired/report; `{}` removes settings |
 | GET /v1/logs | — | Last 200 structural API/lifecycle events; not browsing logs |
 | POST /v1/profiles/import | `{name?, source}` or `{name?, url, intervalMinutes?}` | 201 + ID + conversion report; validates before create; does not select |
 | POST /v1/profiles/select | `{id}` | 200; requires stopped service |
@@ -28,3 +33,35 @@ Android's initial VPN permission must be granted through its UI. The API does no
 `tools/android-debug.py logcat .private/device.log` captures app process logs into a 0600 local file; the application’s built-in log screen also shows core logs. Those logs may contain destinations/identifiers and need redaction before sharing. Crash-report/config exports inherited from SFA can contain full configuration; the debug API deliberately does not expose them.
 
 Release source set contains only a no-op DebugBridge, without listener or token generation. Keep the private debug build on trusted devices.
+
+## Android settings and phone diagnostics
+
+Overrides are explicit per-profile settings stored beside the original Surge source. A same-profile edit, local update or subscription refresh preserves them; a newly imported profile starts without them. Only Surge profiles accept nonempty overrides. Apply with `tools/android-debug.py overrides ID settings.json`, then `reload` if the selected VPN is running. The profile detail shows each override and offers a remove button.
+
+Example (policy must exist in the imported configuration):
+
+```json
+{
+  "policy": "Proxy",
+  "packages": ["com.android.chrome", "com.openai.chatgpt"],
+  "domains": ["google.com", "gstatic.com", "googleapis.com", "googleusercontent.com", "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
+  "dns": "https://1.1.1.1/dns-query"
+}
+```
+
+DNS interception remains first; package and domain overrides then precede original IP/GEOIP rules. Package overrides include IP-only traffic and all destinations of the named apps. Domain matches keep the destination hostname for Snell, avoiding premature local resolution. Optional DNS uses HTTPS through the chosen policy and requires an IPv4 literal endpoint to avoid bootstrap recursion. The original node/default route resolver and explicit DNS rules remain; this is not universal replacement of every DNS lookup. A selector still follows its currently selected member.
+
+Core logs remove ANSI escapes, redact HTTP URL query strings, and skip entries containing `psk` or `password`. This is not complete anonymization: destinations, node labels and addresses may remain. `core-logs .private/core.json` writes a private local file; review before sharing. The buffer may reset when the core reconnects, and sequence numbers need not be contiguous. Group tags can also contain user-chosen sensitive text.
+
+The CLI foregrounds Surge Bridge on each invocation. During another app's UI test, use the loopback API directly so the test app retains focus. Never expose the adb forward on a public interface.
+
+`tools/network-probe/main.go` builds a standalone Android shell probe:
+
+```sh
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o .local-tools/network-probe tools/network-probe/main.go
+adb -s SERIAL push .local-tools/network-probe /data/local/tmp/surge-network-probe
+adb -s SERIAL shell chmod 755 /data/local/tmp/surge-network-probe
+adb -s SERIAL shell /data/local/tmp/surge-network-probe -url https://www.google.com/generate_204 -count 3
+```
+
+It uses Android CA roots with certificate verification enabled and fresh HTTP connections, and reports status, TLS verification, duration and DNS results. Its shell UID tests domain rules; it does not prove another app's package routing. Correlate that app's package and outbound connection IDs, then test its actual UI. An HTTP 403 challenge establishes reachability, not successful ChatGPT operation.

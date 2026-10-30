@@ -9,6 +9,7 @@ import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -129,6 +130,8 @@ class ProfileImportHandler(private val context: Context) {
                 )
             }
 
+            if (isJsonConfiguration(data)) return@withContext QRCodeParseResult.LocalProfile("Imported Profile")
+
             // Try to decode as profile content
             val content =
                 try {
@@ -147,6 +150,7 @@ class ProfileImportHandler(private val context: Context) {
 
     suspend fun importFromQRCode(data: String): ImportResult = withContext(Dispatchers.IO) {
         try {
+            if (isJsonConfiguration(data)) return@withContext importJsonConfiguration(data, "Imported Profile")
             // Check if it's a sing-box remote profile import link
             if (data.startsWith("sing-box://import-remote-profile")) {
                 try {
@@ -236,11 +240,12 @@ class ProfileImportHandler(private val context: Context) {
         val fileID = ProfileManager.nextFileID()
         val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
         val configFile = File(configDirectory, "$fileID.json")
-        configFile.writeText(content.config)
+        ProfileStore.save(configFile, content.config)
         typedProfile.path = configFile.path
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
+        io.nekohasekai.sfa.bg.UpdateProfileWork.reconfigureUpdater()
 
         return ImportResult.Success(profile)
     }
@@ -264,11 +269,12 @@ class ProfileImportHandler(private val context: Context) {
         val fileID = ProfileManager.nextFileID()
         val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
         val configFile = File(configDirectory, "$fileID.json")
-        configFile.writeText("{}")
+        ProfileStore.save(configFile, ProfileStore.download(url))
         typedProfile.path = configFile.path
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
+        io.nekohasekai.sfa.bg.UpdateProfileWork.reconfigureUpdater()
 
         return ImportResult.Success(profile)
     }
@@ -317,22 +323,11 @@ class ProfileImportHandler(private val context: Context) {
 
     private fun isJsonConfiguration(content: String): Boolean {
         val trimmed = content.trimStart()
-        return trimmed.startsWith("{") || trimmed.startsWith("[")
+        return io.nekohasekai.sfa.surge.SurgeConverter.isSurge(content) || trimmed.startsWith("{")
     }
 
     private suspend fun importJsonConfiguration(jsonContent: String, profileName: String): ImportResult {
         return try {
-            // Validate the JSON configuration using sing-box
-            try {
-                // Try to check the configuration
-                Libbox.checkConfig(jsonContent)
-            } catch (e: Exception) {
-                // Configuration validation failed
-                return ImportResult.Error(
-                    context.getString(R.string.error_invalid_configuration, e.message),
-                )
-            }
-
             // Create a local profile with the JSON configuration
             val typedProfile =
                 TypedProfile().apply {
@@ -351,7 +346,7 @@ class ProfileImportHandler(private val context: Context) {
             val fileID = ProfileManager.nextFileID()
             val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
             val configFile = File(configDirectory, "$fileID.json")
-            configFile.writeText(jsonContent)
+            ProfileStore.save(configFile, jsonContent)
             typedProfile.path = configFile.path
 
             // Create profile in database and select it

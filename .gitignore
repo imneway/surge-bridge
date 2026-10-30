@@ -13,3 +13,8 @@ local.properties
 /service-account-credentials.json
 /CLAUDE.md
 /.claude/
+
+/.local-tools/
+/.private/
+
+__pycache__/

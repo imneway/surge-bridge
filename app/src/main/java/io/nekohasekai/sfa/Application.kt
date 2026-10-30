@@ -69,6 +69,7 @@ class Application : Application() {
             PrivilegeSettingsClient.register(this@Application)
             runCatching {
                 setupLibbox()
+                io.nekohasekai.sfa.debug.DebugBridge.start()
             }.onFailure {
                 Log.w("Application", "setup libbox: ${it.message}")
             }

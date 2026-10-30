@@ -68,12 +68,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.nekohasekai.sfa"
+        applicationId = "io.github.liuw.surgebridge"
         minSdk = 24
         targetSdk = 37
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
-        base.archivesName.set("SFA-${versionName}")
+        base.archivesName.set("SurgeBridge-${versionName}")
     }
 
     signingConfigs {
@@ -87,6 +87,7 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
             if (getProps("KEYSTORE_PASS").isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -132,7 +133,7 @@ android {
             isEnable = true
             isUniversalApk = true
             reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            include("arm64-v8a", "x86_64")
         }
     }
 

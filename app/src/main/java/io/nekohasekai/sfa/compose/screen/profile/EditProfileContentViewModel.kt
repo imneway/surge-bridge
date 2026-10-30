@@ -9,6 +9,7 @@ import io.nekohasekai.sfa.compat.ProfileEditorColors
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.ktx.unwrap
+import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -126,7 +127,7 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                 _uiState.update { it.copy(isCheckingConfig = true) }
 
                 // Check configuration
-                Libbox.checkConfig(content)
+                ProfileStore.validate(content)
 
                 // Configuration is valid, clear any error
                 _uiState.update {
@@ -158,7 +159,7 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                 profile = loadedProfile
 
                 // Just load the content, we already have profile metadata from Intent
-                val content = File(loadedProfile.typed.path).readText()
+                val content = ProfileStore.source(File(loadedProfile.typed.path))
 
                 withContext(Dispatchers.Main) {
                     editor?.setText(content)
@@ -192,9 +193,9 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                         editor?.getText() ?: ""
                     }
 
-                // Save to file without validation
+                // Validate and atomically publish the runtime configuration
                 profile?.let { p ->
-                    File(p.typed.path).writeText(currentContent)
+                    ProfileStore.save(File(p.typed.path), currentContent)
                 }
 
                 _uiState.update {
@@ -229,7 +230,7 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                     withContext(Dispatchers.Main) {
                         editor?.getText() ?: ""
                     }
-                val formatted = Libbox.formatConfig(currentContent).unwrap
+                val formatted = if (io.nekohasekai.sfa.surge.SurgeConverter.isSurge(currentContent)) currentContent else Libbox.formatConfig(currentContent).unwrap
 
                 if (formatted != currentContent) {
                     withContext(Dispatchers.Main) {

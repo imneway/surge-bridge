@@ -10,7 +10,7 @@ import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
-import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -259,7 +259,7 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                                     File(Uri.parse(sourceURL).path!!).readText()
                                 }
                                 sourceURL.startsWith("http://") || sourceURL.startsWith("https://") -> {
-                                    HTTPClient().use { it.getString(sourceURL) }
+                                    ProfileStore.download(sourceURL)
                                 }
                                 else -> throw Exception("Unsupported source: $sourceURL")
                             }
@@ -269,8 +269,7 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
             }
 
         // Validate config
-        Libbox.checkConfig(configContent)
-        configFile.writeText(configContent)
+        ProfileStore.save(configFile, configContent)
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
@@ -300,11 +299,8 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
         typedProfile.path = configFile.path
 
         // Fetch initial config - this MUST succeed for remote profiles
-        val content = HTTPClient().use { it.getString(state.remoteUrl) }
-        Libbox.checkConfig(content)
-        val configContent = content
-
-        configFile.writeText(configContent)
+        val content = ProfileStore.download(state.remoteUrl)
+        ProfileStore.save(configFile, content)
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)

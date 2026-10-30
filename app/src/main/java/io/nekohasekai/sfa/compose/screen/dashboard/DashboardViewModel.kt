@@ -15,8 +15,8 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
-import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -351,16 +351,11 @@ class DashboardViewModel :
 
             try {
                 // Fetch remote config
-                val content = HTTPClient().use { it.getString(profile.typed.remoteURL) }
-                Libbox.checkConfig(content)
+                val content = ProfileStore.download(profile.typed.remoteURL)
 
                 // Check if content changed
                 val file = File(profile.typed.path)
-                var contentChanged = false
-                if (!file.exists() || file.readText() != content) {
-                    file.writeText(content)
-                    contentChanged = true
-                }
+                val contentChanged = ProfileStore.save(file, content)
 
                 // Update last updated time
                 profile.typed.lastUpdated = Date()

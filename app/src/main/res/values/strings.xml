@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- App -->
-    <string name="app_name" translatable="false">sing-box</string>
+    <string name="app_name" translatable="false">Surge Bridge</string>
     <string name="app_version_title">App version</string>
     <string name="language">Language</string>
     <string name="system_default">System default</string>
@@ -743,4 +743,5 @@
     <string name="endpoint_browser_navigation_failed">Browser navigation failed: %1$s</string>
     <string name="endpoint_browser_too_many_windows">The authentication page opened too many browser windows.</string>
     <string name="endpoint_browser_profile_unavailable">Browser authentication is unavailable on this device.</string>
+    <string name="surge_configuration">Surge Configuration</string>
 </resources>

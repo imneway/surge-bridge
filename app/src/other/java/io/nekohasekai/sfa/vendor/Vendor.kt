@@ -22,31 +22,12 @@ object Vendor : VendorInterface {
     private const val TAG = "Vendor"
 
     override fun checkUpdate(activity: Activity, byUser: Boolean) {
-        try {
-            val updateInfo = checkUpdateAsync()
-            if (updateInfo != null) {
-                activity.runOnUiThread {
-                    showUpdateDialog(activity, updateInfo)
-                }
-            } else if (byUser) {
-                activity.runOnUiThread {
-                    showNoUpdatesDialog(activity)
-                }
-            }
-        } catch (e: UpdateCheckException.TrackNotSupported) {
-            Log.d(TAG, "checkUpdate: track not supported")
-            if (byUser) {
-                activity.runOnUiThread {
-                    showTrackNotSupportedDialog(activity)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "checkUpdate: ", e)
-            if (byUser) {
-                activity.runOnUiThread {
-                    showNoUpdatesDialog(activity)
-                }
-            }
+        if (byUser) activity.runOnUiThread {
+            MaterialAlertDialogBuilder(activity)
+                .setTitle("Surge Bridge")
+                .setMessage("This development fork is updated by installing a new Surge Bridge build.")
+                .setPositiveButton(R.string.ok, null)
+                .show()
         }
     }
 
@@ -95,23 +76,13 @@ object Vendor : VendorInterface {
         onCropArea: ((QRCodeCropArea?) -> Unit)?,
     ): ImageAnalysis.Analyzer? = null
 
-    override val hasCustomUpdate = true
+    override val hasCustomUpdate = false
 
     override val updateSources = listOf(UpdateSource.GITHUB, UpdateSource.FDROID)
 
-    override fun checkUpdateAsync(): UpdateInfo? = when (UpdateSource.fromString(Settings.updateSource)) {
-        UpdateSource.FDROID -> checkFDroidUpdate(Application.application)
-        UpdateSource.GITHUB -> {
-            val track = UpdateTrack.fromString(Settings.updateTrack)
-            GitHubUpdateChecker().use { checker ->
-                checker.checkUpdate(track, Settings.githubToken)
-            }
-        }
-    }
+    override fun checkUpdateAsync(): UpdateInfo? = null
 
-    override fun scheduleAutoUpdate() {
-        UpdateWorker.schedule(io.nekohasekai.sfa.Application.application)
-    }
+    override fun scheduleAutoUpdate() = Unit
 
     override suspend fun verifySilentInstallMethod(method: String): Boolean {
         return when (method) {

@@ -109,7 +109,13 @@ class ProfileCodeEditor(context: Context, private val syntax: CodeEditorSyntax =
     val view: View
         get() = editor
 
-    fun setText(content: String) = editor.setText(content)
+    fun setText(content: String) {
+        if (syntax == CodeEditorSyntax.JSON && io.nekohasekai.sfa.surge.SurgeConverter.isSurge(content)) {
+            // Surge is INI-like text; JSON auto-completion must not rewrite its lines.
+            editor.setEditorLanguage(io.github.rosemoe.sora.lang.EmptyLanguage())
+        }
+        editor.setText(content)
+    }
 
     fun getText(): String = editor.text.toString()
 

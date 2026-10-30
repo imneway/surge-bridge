@@ -636,7 +636,7 @@ class MainActivity :
         }
 
         // Handle update check prompt dialog (shown only once on first launch)
-        var showUpdateCheckPrompt by remember { mutableStateOf(!Settings.updateCheckPrompted) }
+        var showUpdateCheckPrompt by remember { mutableStateOf(Vendor.hasCustomUpdate && !Settings.updateCheckPrompted) }
         if (showUpdateCheckPrompt) {
             AlertDialog(
                 onDismissRequest = {

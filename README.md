@@ -1,3 +1,9 @@
+# Surge Bridge (Android development fork)
+
+Surge `.conf` import and subscription conversion with native Snell v6, based on SFA 1.14.4. This is an independent development fork, not an official SagerNet release. See [setup, compatibility, and debug API](docs/README.zh-CN.md). Original upstream documentation and GPL license follow.
+
+---
+
 # SFA
 
 Experimental Android client for sing-box, the universal proxy platform.

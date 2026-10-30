@@ -13,7 +13,7 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
-import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.surge.ProfileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +28,7 @@ import java.util.Locale
 
 data class EditProfileUiState(
     val profile: Profile? = null,
+    val compatibilityNotices: String = "",
     val name: String = "",
     val icon: String? = null,
     val profileType: TypedProfile.Type? = null,
@@ -60,6 +61,13 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
     var pendingExportContent: String? = null
     var pendingExportFileName: String? = null
 
+    private fun conversionNotices(profile: Profile): String {
+        val report = ProfileStore.report(File(profile.typed.path))
+        if (report.optString("format") != "surge") return ""
+        val notices = report.getJSONArray("warnings")
+        return "Surge configuration" + (0 until notices.length()).joinToString("") { "\n• " + notices.getString(it) }
+    }
+
     fun loadProfile(profileId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -78,6 +86,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         profile = profile,
+                        compatibilityNotices = conversionNotices(profile),
                         name = profile.name,
                         originalName = profile.name,
                         icon = profile.icon,
@@ -255,13 +264,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 var selectedProfileUpdated = false
 
                 // Fetch remote config
-                val content = HTTPClient().use { it.getString(profile.typed.remoteURL) }
-                Libbox.checkConfig(content)
+                val content = ProfileStore.download(profile.typed.remoteURL)
 
                 // Check if content changed
                 val file = File(profile.typed.path)
-                if (!file.exists() || file.readText() != content) {
-                    file.writeText(content)
+                if (ProfileStore.save(file, content)) {
                     if (profile.id == Settings.selectedProfile) {
                         selectedProfileUpdated = true
                     }
@@ -277,6 +284,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         lastUpdated = profile.typed.lastUpdated,
                         isUpdating = false,
                         showUpdateSuccess = true,
+                        compatibilityNotices = conversionNotices(profile),
                     )
                 }
 
@@ -319,9 +327,10 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 return null
             }
 
-            val content = configFile.readText()
+            val content = ProfileStore.source(configFile)
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val fileName = "${profile.name.replace(" ", "_")}_$timestamp.json"
+            val extension = if (io.nekohasekai.sfa.surge.SurgeConverter.isSurge(content)) "conf" else "json"
+            val fileName = "${profile.name.replace(" ", "_")}_$timestamp.$extension"
 
             // Store content for later when user picks location
             pendingExportContent = content

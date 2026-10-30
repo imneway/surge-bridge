@@ -213,6 +213,12 @@ fun EditProfileScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                if (uiState.compatibilityNotices.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text(uiState.compatibilityNotices, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+
                 // Basic Information Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -304,7 +310,9 @@ fun EditProfileScreen(
                 }
 
                 // Remote Profile Options
-                if (uiState.profileType == TypedProfile.Type.Remote) {
+                if (uiState.compatibilityNotices.isNotEmpty()) {
+                                        stringResource(R.string.surge_configuration)
+                                    } else if (uiState.profileType == TypedProfile.Type.Remote) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors =

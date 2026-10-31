@@ -8,7 +8,7 @@
 - sing-box 内核：v1.14.4，`c005f35300ce76427dc285481ec5695f5b179cd2`；gomobile v0.1.12。
 - 分支：`feat/surge-profiles`。保留 upstream Git 历史和 GPL-3.0 许可证。
 - 调试包名：`io.github.liuw.surgebridge.debug`；应用名 Surge Bridge，与官方 SFA 并存。
-- 本分支构建 ARM64 和 x86_64；没有 32 位 APK。使用系统默认 debug 签名，升级须保留同一 debug keystore。
+- 本分支构建 ARM64 和 x86_64；没有 32 位 APK。调试版使用系统默认 debug 签名，升级须保留同一 debug keystore。正式版使用独立本地签名，详见下方发布构建。
 - 开发构建关闭官方 SFA 的应用更新入口，防止把官方包误当成此分支更新。
 
 构建需 JDK（已用 Temurin 21.0.13 验证）、Go（已用 1.26.1 验证）、Android SDK platform 37.1、platform 24（gomobile 绑定）、build-tools 36/37、NDK 28.0.13004108。Gradle 和插件版本沿用发布基线。SDK/NDK/JDK 路径建议不含空格（可使用短路径符号链接）。
@@ -110,3 +110,25 @@ OPPO 真机的开机广播曾被系统以 `DEFER_BY_OPLUS / PRESSURE` 延迟，�
 Surge GEOIP 规则现在使用 `http_client: {"detour": "DIRECT"}`，替代 sing-box 1.14 弃用、1.16 将移除的 `download_detour`。保留原来的 DIRECT 下载线路和一天更新周期。
 
 已导入的 Surge 配置会在下一次启动或重载 VPN 时自动迁移缓存 JSON，并经内核校验后原子保存，不需要重新导入或下载订阅。原始 Surge 文本、Android 覆盖设置、缓存身份和模式规则保留；直接导入的原生 sing-box JSON 不在此次自动迁移范围内。弃用警告没有被禁用或隐藏。
+
+## 1.14.4-surge.6：URL 图标与正式版
+
+“从 URL 导入”入口增加链接图标，颜色和布局与其他导入入口一致。
+
+正式版包名为 `io.github.liuw.surgebridge`，可与 `.debug` 调试版共存，配置和 VPN 授权独立，首次使用需要导入配置并授权 VPN。正式版开启 R8 优化，不包含本地 Debug API，不会覆盖调试版数据。
+
+发布签名保存在本机 `.private/signing/surge-bridge-release.p12`，配套构建属性在 `.private/signing/release.properties`；二者均不入 Git。后续升级必须沿用这套签名，请将整个签名目录安全备份。仓库继承的 `app/release.keystore` 未用于本次发布。
+
+设置好 JDK、Android SDK 和 Gradle 缓存环境后，可用以下方式重建，避免把签名密码放入命令行参数或提交到仓库：
+
+```sh
+python3 - <<'PY'
+import base64, os, subprocess
+from pathlib import Path
+env = os.environ.copy()
+env["LOCAL_PROPERTIES"] = base64.b64encode(Path(".private/signing/release.properties").read_bytes()).decode()
+subprocess.run(["./gradlew", ":app:assembleOtherRelease"], env=env, check=True)
+PY
+```
+
+产物位于 `app/build/outputs/apk/other/release/`。OPPO 真机使用 `arm64-v8a` 包；`x86_64` 主要供模拟器使用，`universal` 同时包含两种架构。正式版不使用调试 API，自动化诊断仍使用保留的调试版。

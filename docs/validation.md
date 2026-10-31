@@ -118,3 +118,13 @@ Version 750 (`1.14.4-surge.5`) replaces generated GEOIP `download_detour` with i
 - The initial USB interruption and private pre-install backup/diagnostics are retained only in ignored `.private/http-client-migration/`. No device reboot was needed.
 
 Reference: https://sing-box.sagernet.org/configuration/rule-set/ and https://sing-box.sagernet.org/configuration/shared/http-client/
+
+
+## Signed release build — 2026-10-31, surge.6
+
+- Added the outlined link icon to the URL import list item, using the same primary tint and leading-content layout as the file/QR entries. Import behavior is unchanged.
+- Version 751 (`1.14.4-surge.6`), `:app:assembleOtherRelease` passed, including R8 optimization and release vital lint checks. ARM64, x86_64 and universal APKs were produced.
+- ARM64 artifact passed `apksigner verify`; APK v2 signature uses a dedicated 3072-bit RSA local release key. Certificate SHA-256: `263ad4668a51ad54d5780959a59d4845cb1d37474c0c106b39563ee2ca8ede51`.
+- Artifact inspection confirms package `io.github.liuw.surgebridge`, versionCode 751, ARM64 native library and no debuggable marker. Release DEX contains none of the debug token/API endpoint markers; the release DebugBridge source is the no-op implementation.
+- Signing credentials are excluded from Git under `.private/signing/`. The inherited repository keystore was not used. APK SHA-256 values are written alongside the artifacts in `SHA256SUMS`.
+- This turn built and inspected the release APK; it did not install it or perform new release-device UI/network tests. The phone's previously verified surge.5 debug installation remains intact. Release uses a separate package and therefore requires its own configuration import and VPN authorization.

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -415,6 +416,13 @@ fun ProfilesCard(
                     modifier = Modifier.clickable {
                         onHideAddProfileSheet()
                         onOpenNewProfile(NewProfileArgs(importName = "", importUrl = ""))
+                    },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Outlined.Link,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
                     },
                     headlineContent = { Text(stringResource(R.string.profile_add_url)) },
                     supportingContent = { Text(stringResource(R.string.profile_add_url_description)) },

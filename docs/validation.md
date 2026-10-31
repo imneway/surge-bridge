@@ -102,3 +102,15 @@ Android's separate [always-on VPN mode](https://developer.android.com/develop/co
 
 
 After the app-only boot observation, the app was explicitly opened to restore normal use; this is recorded as manual recovery, not a boot pass. On the final surge.4 APK, Google and gstatic returned verified-TLS 204 again (2/2). The installed APK SHA-256 matched the build artifact. Only the original profile remained, with its original runtime hash, node and Rule mode; temporary servers, probe binary and debug forwards were cleaned up. System always-on VPN and non-VPN blocking remained off pending the user's separate preference.
+
+
+## Rule-set HTTP client migration — 2026-10-31, surge.5
+
+Version 750 (`1.14.4-surge.5`) replaces generated GEOIP `download_detour` with inline `http_client.detour`, retaining DIRECT and the one-day refresh interval. Existing generated caches migrate before the mode-feature early return at VPN start/reload, including direct-only profiles. The existing ProfileStore native-validation/atomic-save path preserves the original source and Android overrides. Native JSON imports remain untouched.
+
+- 88 assertions passed (37 converter, 19 routing overrides, 32 runtime/failover). Regression coverage includes already mode-enabled legacy caches, idempotence, direct-only profiles, existing explicit HTTP clients, native JSON passthrough and preservation of all unrelated runtime fields.
+- Four generated configurations passed sing-box 1.14.4 validation, including a migrated legacy cache, without deprecation output.
+- `:app:assembleOtherDebug` succeeded; the arm64 APK installed successfully over surge.4 on the OPPO device.
+- Physical post-install checks are pending: USB shell and API calls stalled after installation, and transport reconnect reported the device offline. This is not counted as migration/UI/connectivity success. The pre-install app data backup and diagnostics are kept only under ignored `.private/http-client-migration/`.
+
+Reference: https://sing-box.sagernet.org/configuration/rule-set/ and https://sing-box.sagernet.org/configuration/shared/http-client/

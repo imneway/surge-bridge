@@ -20,3 +20,5 @@ mkdir -p .local-tools
 
 "$JAVA_HOME/bin/java" -cp ".local-tools/converter-tests.jar:$JSON_JAR" AndroidRuntimeFeaturesTestKt
 "$SING_BOX" check -c .local-tools/runtime-features-test.json
+
+"$SING_BOX" check -c .local-tools/migrated-runtime-test.json

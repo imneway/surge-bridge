@@ -8,13 +8,14 @@ object AndroidRuntimeFeatures {
     private const val GLOBAL_DNS = "surge-android-global-dns"
     fun apply(result: SurgeConverter.Result, overrides: JSONObject): SurgeConverter.Result {
         if (result.sourceFormat != "surge") return result
-        val config = JSONObject(result.json)
+        val upgraded = migrateRuleSetClients(result)
+        val config = JSONObject(upgraded.json)
         val dns = config.getJSONObject("dns")
         val servers = dns.getJSONArray("servers")
-        if ((0 until servers.length()).any { servers.getJSONObject(it).optString("tag") == GLOBAL_DNS }) return result
+        if ((0 until servers.length()).any { servers.getJSONObject(it).optString("tag") == GLOBAL_DNS }) return upgraded
         val outbounds = config.getJSONArray("outbounds")
         val proxies = (0 until outbounds.length()).map { outbounds.getJSONObject(it) }.filter { it.getString("type") != "direct" }
-        if (proxies.isEmpty()) return result
+        if (proxies.isEmpty()) return upgraded
         val route = config.getJSONObject("route")
         val policy = overrides.optString("policy").ifEmpty {
             route.getString("final").takeIf { tag -> proxies.any { it.getString("tag") == tag } }
@@ -41,6 +42,23 @@ object AndroidRuntimeFeatures {
         val experimental = config.getJSONObject("experimental")
         experimental.put("clash_api", obj("default_mode" to "Rule")) // No TCP management listener.
         return result.copy(json = config.toString(2))
+    }
+
+    /** Migrate generated caches without re-fetching the user's source or rule lists. */
+    private fun migrateRuleSetClients(result: SurgeConverter.Result): SurgeConverter.Result {
+        val config = JSONObject(result.json)
+        val sets = config.optJSONObject("route")?.optJSONArray("rule_set") ?: return result
+        var changed = false
+        for (i in 0 until sets.length()) {
+            val ruleSet = sets.getJSONObject(i)
+            if (ruleSet.optString("type") != "remote" || !ruleSet.has("download_detour")) continue
+            if (!ruleSet.has("http_client")) {
+                ruleSet.put("http_client", obj("detour" to ruleSet.getString("download_detour")))
+            }
+            ruleSet.remove("download_detour")
+            changed = true
+        }
+        return if (changed) result.copy(json = config.toString(2)) else result
     }
 
     fun scopeToProfile(result: SurgeConverter.Result, identity: String): SurgeConverter.Result {

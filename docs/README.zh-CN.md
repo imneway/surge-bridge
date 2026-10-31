@@ -48,7 +48,7 @@ bash tools/build-android.sh
 见 [debug-api.md](debug-api.md)。API 只在 debug 变体启动；release 使用空实现。只监听 Android `127.0.0.1:19090`，每次应用进程启动生成新的 bearer token，电脑经 `adb forward` 和 `run-as` 访问。API 不返回源配置、PSK、订阅 URL 或配置解析器原始错误。新增的 core-logs 接口会包含访问目标、节点标签等敏感元数据，保存后需脱敏再分享。
 
 ```sh
-python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.4-arm64-v8a-debug.apk
+python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.5-arm64-v8a-debug.apk
 python3 tools/android-debug.py import /path/to/Work.conf
 python3 tools/android-debug.py select 1
 python3 tools/android-debug.py start
@@ -104,3 +104,9 @@ OPPO Android 17 真机验证发现：原目标 DNS 返回错误 IP，且 `IP-CID
 
 
 OPPO 真机的开机广播曾被系统以 `DEFER_BY_OPLUS / PRESSURE` 延迟，解锁后观察超过 5 分钟仍未启动。因此仅打开应用内「开机恢复连接」不能保证这台手机及时自动连接。系统「始终开启的 VPN」是另一种选择，会由 Android 持续维持连接，手动停止的使用方式也会改变。
+
+## 1.14.4-surge.5：规则下载配置兼容性
+
+Surge GEOIP 规则现在使用 `http_client: {"detour": "DIRECT"}`，替代 sing-box 1.14 弃用、1.16 将移除的 `download_detour`。保留原来的 DIRECT 下载线路和一天更新周期。
+
+已导入的 Surge 配置会在下一次启动或重载 VPN 时自动迁移缓存 JSON，并经内核校验后原子保存，不需要重新导入或下载订阅。原始 Surge 文本、Android 覆盖设置、缓存身份和模式规则保留；直接导入的原生 sing-box JSON 不在此次自动迁移范围内。弃用警告没有被禁用或隐藏。

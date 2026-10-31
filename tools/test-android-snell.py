@@ -40,10 +40,11 @@ http = http.server.ThreadingHTTPServer(('127.0.0.1', 0), HTTP)
 threading.Thread(target=http.serve_forever, daemon=True).start()
 udp = socket.socket(type=socket.SOCK_DGRAM); udp.bind(('127.0.0.1', 0)); udp.settimeout(.5)
 running = True
+udp_received = []
 def echo():
     while running:
         try:
-            data, peer = udp.recvfrom(4096); udp.sendto(data, peer)
+            data, peer = udp.recvfrom(4096); udp_received.append(data); udp.sendto(data, peer)
         except socket.timeout: pass
 threading.Thread(target=echo, daemon=True).start()
 with socket.socket() as s: s.bind(('127.0.0.1', 0)); snell_port = s.getsockname()[1]
@@ -67,6 +68,19 @@ try:
                 response = adb('shell', 'toybox', 'nc', '-u', '-w', '3', '-W', '3', '-q', '3', '203.0.113.17', '18081', input=b'ANDROID-SNELL-V6-UDP-OK').stdout
                 assert b'ANDROID-SNELL-V6-UDP-OK' in response, 'Android UDP tunnel failed'
                 print('PASS: Android emulator TUN -> Snell v6 default -> localhost TCP and UDP')
+                # Surge's default is TCP-only when udp-relay is omitted. Verify actual
+                # forwarding, not merely the generated outbound's network property.
+                api('service/stop', {}); wait_state('Stopped')
+                api('profiles/update', {'id': profile['id'], 'source': source.replace(',udp-relay=true', '')})
+                api('service/start', {}); wait_state('Started')
+                response = adb('shell', 'toybox', 'nc', '-w', '5', '203.0.113.17', '18080', input=b'GET / HTTP/1.0\r\nHost: test\r\n\r\n').stdout
+                assert b'ANDROID-SNELL-V6-TCP-OK' in response, 'Default TCP-only node must still forward TCP'
+                # nc's own timeout does not reliably expire when TUN silently drops UDP.
+                # Bound the remote process and check the destination server too.
+                blocked = adb('shell', 'toybox', 'timeout', '-k', '1', '5', 'toybox', 'nc', '-u', '-w', '3', '-W', '3', '-q', '3', '203.0.113.17', '18081', input=b'ANDROID-SNELL-V6-UDP-DEFAULT')
+                assert blocked.returncode in (0, 124), 'UDP probe failed to run'
+                assert b'ANDROID-SNELL-V6-UDP-DEFAULT' not in blocked.stdout and b'ANDROID-SNELL-V6-UDP-DEFAULT' not in udp_received, 'UDP forwarded without explicit udp-relay=true'
+                print('PASS: omitted udp-relay keeps TCP working and blocks UDP')
             finally:
                 api('service/stop', {}); wait_state('Stopped')
                 process.terminate()

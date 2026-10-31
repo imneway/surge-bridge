@@ -154,3 +154,44 @@ Version 753 (`1.14.4-surge.8`) applies the findings of a complete review of the 
 - Not verified on a device: staged resolution against real nodes, the new overrides card on the OPPO phone, the offline regeneration of surge.7 caches at first start after upgrade, and UDP behavior of nodes without `udp-relay=true`. Existing Android fixtures (`tools/test-android-snell.py`, `tools/test-android-features.py`) were updated to declare `udp-relay=true` and should be rerun on the emulator before the next physical install.
 
 Known remaining difference: a failed `resolve` still drops the connection instead of applying `FINAL,dns-failed`; a proxy-side resolve needs the proxy to be reachable, which is also required for the connection itself.
+
+
+## Independent surge.8 regression — 2026-10-31
+
+Tested product commit `6551789` (version 753, `1.14.4-surge.8`). This round adds regression tests and records results; no application behavior was changed.
+
+| Check | Observed result |
+|---|---|
+| Converter/routing/runtime | 73 + 22 + 35 = 130 assertions passed; five generated configs passed native validation |
+| Cold rule-set downloads | Existing two old-client failures reproduced and both fixed new/migrated configs actually downloaded and started |
+| Host Snell v6 | 12 TCP/UDP checks passed across default/unshaped/unsafe-raw with reuse on/off |
+| Debug and signed release builds | Both Gradle assemble targets succeeded; all six APKs copied to the requested Dropbox delivery directory and hashes compared |
+| Android API/storage/subscriptions | 29 emulator assertions passed, including real fixture downloads, invalid-update preservation and API authentication |
+| Modes/updates/failover | 17 emulator assertions passed: per-profile automatic/manual updates, failure preservation, Rule/Global/Direct, two-round failover, no recovery failback and mode/node persistence |
+| New generation/storage checks | 9 emulator assertions passed: generation 1 regenerated offline to generation 2, exact current runtime restored, source/overrides retained, missing rule cache fallback remains usable, slow downloads do not block profile reads |
+| Android Snell forwarding | Real TUN→Snell→controlled TCP and UDP destinations passed with udp-relay=true; omitting the option retained TCP and did not deliver UDP to the server |
+| New overrides card | Visible on the OPPO release app. On the emulator, saving HTTPS DNS persisted the value in the profile and re-opening the editor reloaded it correctly |
+| Physical release upgrade | Installed signed .8 over .7 with existing Dine subscription; initial service was stopped, original subscription started successfully after upgrade, Rule mode visible, no startup error dialog |
+| Physical connectivity | 9/9 verified-TLS requests across Google home/Google204/gstatic; 2/2 more on cellular and 2/2 after restoring Wi-Fi (13/13 total) |
+| Actual application UI | Chrome rendered the Google page; a new ChatGPT temporary chat returned `12 + 13 = 25` |
+| Final checks | Installed APK SHA-256 matches the .8 release artifact. No FATAL EXCEPTION in the sampled app logcat. System always-on VPN/lockdown stayed unset; Wi-Fi restored enabled; VPN left Started |
+
+### Non-blocking finding: successful setting save shown under Error
+
+Reproduced on the selected emulator profile with VPN stopped: open Android routing overrides, enter `https://9.9.9.9/dns-query`, and press Save overrides. The profile is saved (verified through the API and by reopening the UI), but the dialog title says **Error** while its body says settings were saved and the VPN should be started/restarted.
+
+`EditProfileViewModel.kt:134-138` attempts reload whenever the profile is selected, including while stopped, and assigns the restart notice to `errorMessage`. `EditProfileScreen.kt:118` renders that notice with `error_title`. Use a separate informational notice for successful saves; only attempt live reload when the service is running. This UI finding is recorded, not fixed in this test-only round.
+
+### Test limits and cleanup
+
+- Physical testing used the release package, which has no Debug API. It verifies successful upgrade/start and actual connectivity/UI; it does not expose the private generation/source hash or provide per-connection Snell/DIRECT counts. Generation and source preservation were checked independently in the emulator.
+- No phone reboot or long-duration periodic worker cycle was repeated in this round. The known OPPO app-only boot deferral remains a separate limitation.
+- The added negative UDP test initially hit toybox nc's own non-expiring wait when packets were dropped. The harness now bounds the remote process with toybox timeout and checks the destination server received no forbidden payload; the corrected run passed. This was a test-harness timeout, not an application crash.
+- The phone probe and temporary UI XML were removed. All test forwards/reverses were closed and the disposable emulator stopped. Synthetic profiles remain only in that test emulator's data; the phone's subscription was not replaced with fixtures. Private logs/screenshots are under `.private/claude-surge8-regression/` and are excluded from Git.
+
+Reproduce the added storage checks on an already prepared disposable emulator with:
+
+```sh
+python3 tools/test-android-store.py --serial emulator-5554
+python3 tools/test-android-snell.py .local-tools/sing-box-1.14.4-darwin-arm64/sing-box --serial emulator-5554
+```

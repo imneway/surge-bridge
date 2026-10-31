@@ -270,7 +270,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope.launch(Dispatchers.Default) {
             val currentGroups = uiState.value.groups
             val currentByTag = currentGroups.associateBy { it.tag }
-            val mergedGroups = newGroups.map { goGroup ->
+            // Hidden resolver mirrors are an implementation detail of Surge profiles.
+            val mergedGroups = newGroups.filter { !it.tag.startsWith(io.nekohasekai.sfa.surge.SurgeConverter.RESOLVER_GROUP) }.map { goGroup ->
                 val converted = Group(goGroup)
                 val existing = currentByTag[converted.tag]
                 if (existing == converted) existing else converted

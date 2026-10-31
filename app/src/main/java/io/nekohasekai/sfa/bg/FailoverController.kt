@@ -4,6 +4,7 @@ import android.os.SystemClock
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.sfa.surge.FailoverDecision
+import io.nekohasekai.sfa.surge.SurgeConverter
 import io.nekohasekai.sfa.utils.CommandClient
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,8 +45,9 @@ class FailoverController(private val enabledGroups: List<String>) : CommandClien
         mode = newMode
     }
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
+        syncResolverGroups(newGroups)
         val previous = groups
-        val updated = newGroups.filter { it.selectable }.associate { group ->
+        val updated = newGroups.filter { it.selectable && !it.tag.startsWith(SurgeConverter.RESOLVER_GROUP) }.associate { group ->
             val members = mutableListOf<Member>()
             val iterator = group.items
             while (iterator.hasNext()) {
@@ -57,12 +59,35 @@ class FailoverController(private val enabledGroups: List<String>) : CommandClien
         if (updated.any { (tag, group) -> previous[tag]?.selected != group.selected }) epoch.incrementAndGet()
         groups = updated
     }
+
+    /**
+     * Keeps each hidden `surge-resolver-<group>` selector on the node its group selected, so proxy-side DNS
+     * never follows a group onto DIRECT. Idempotent: a converged state issues no command.
+     */
+    private fun syncResolverGroups(newGroups: List<OutboundGroup>) {
+        val byTag = newGroups.associateBy { it.tag }
+        val prefix = "${SurgeConverter.RESOLVER_GROUP}-"
+        for (mirror in newGroups) {
+            if (!mirror.tag.startsWith(prefix)) continue
+            val source = byTag[mirror.tag.removePrefix(prefix)] ?: continue
+            if (source.selected == "DIRECT") continue
+            val desired = if (byTag.containsKey(prefix + source.selected)) prefix + source.selected else source.selected
+            if (mirror.selected == desired) continue
+            val members = mutableListOf<String>()
+            val iterator = mirror.items
+            while (iterator.hasNext()) members.add(iterator.next().tag)
+            if (desired !in members) continue
+            scope.launch { runCatching { Libbox.newStandaloneCommandClient().selectOutbound(mirror.tag, desired) } }
+        }
+    }
+
     fun start() {
+        // The group subscription also drives resolver mirroring, so it connects regardless of failover settings.
+        client.connect()
         if (enabledGroups.isEmpty()) {
             mutableStatus.value = "{}"
             return
         }
-        client.connect()
         scope.launch {
             delay(3000)
             while (isActive) {

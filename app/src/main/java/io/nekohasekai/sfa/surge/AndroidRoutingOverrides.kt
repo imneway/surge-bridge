@@ -17,7 +17,7 @@ object AndroidRoutingOverrides {
         require(policy.isNotEmpty()) { "Overrides require a policy" }
         val outbounds = config.getJSONArray("outbounds")
         require((0 until outbounds.length()).any { outbounds.getJSONObject(it).getString("tag") == policy }) { "Unknown override policy" }
-        require(policy != "DIRECT") { "Overrides require a proxy policy" }
+        require(policy != "DIRECT" && !policy.startsWith(SurgeConverter.RESOLVER_GROUP)) { "Overrides require a proxy policy" }
         fun values(key: String): List<String> {
             if (!overrides.has(key)) return emptyList()
             val array = overrides.getJSONArray(key)
@@ -72,7 +72,8 @@ object AndroidRoutingOverrides {
             for (i in 0 until servers.length()) {
                 val server = servers.getJSONObject(i)
                 if (!server.optString("tag").startsWith(SurgeConverter.PROXY_DNS)) continue
-                server.put("server", uri.host).put("path", uri.rawPath.ifEmpty { "/dns-query" })
+                server.put("type", "https").put("server", uri.host).put("path", uri.rawPath.ifEmpty { "/dns-query" })
+                server.remove("domain_resolver")
                 if (uri.port != -1) {
                     require(uri.port in 1..65535)
                     server.put("server_port", uri.port)
@@ -84,7 +85,7 @@ object AndroidRoutingOverrides {
             // route.default_domain_resolver and dns.final remain the profile DNS for direct traffic.
             warnings.add(
                 if (reconfigured > 0) {
-                    "Android override: proxy-bound IP/GEOIP re-resolution uses ${uri.host} over HTTPS through each proxy policy; node bootstrap DNS remains from the Surge profile."
+                    "Android override: proxy-bound IP/GEOIP re-resolution uses ${uri.host} over HTTPS through each proxy policy instead of the profile DNS; node bootstrap DNS remains from the Surge profile."
                 } else {
                     "Android override: the DNS setting has no effect because this profile never resolves proxy-bound traffic (no IP/GEOIP rule precedes a proxy policy)."
                 },

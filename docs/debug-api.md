@@ -13,6 +13,7 @@ Use `adb forward tcp:0 tcp:19090`, then connect to the allocated computer port w
 | GET /v1/profiles | — | IDs, types, update time, selection, conversion warnings/hash; no names/URLs/credentials |
 | GET /v1/core-logs | — | Last 2500 runtime log entries; sequence/level/message; sensitive destination metadata |
 | GET /v1/groups | — | Group tags, selected member, members, selectable flag |
+| GET /v1/connections | — | Live and recently closed connections with per-connection uplink/downlink byte totals, domain, package, rule and outbound; browsing metadata, no payloads |
 | POST /v1/core-logs/clear | `{}` | Clear collected runtime log buffer |
 | POST /v1/groups/select | `{group, outbound}` | Select a node while Started; verify subsequent traffic |
 | POST /v1/profiles/overrides | `{id, overrides}` | Validate and save Android settings; changed/reloadRequired/report; `{}` removes settings |
@@ -45,7 +46,7 @@ Example (policy must exist in the imported configuration):
   "policy": "Proxy",
   "packages": ["com.android.chrome", "com.openai.chatgpt"],
   "domains": ["google.com", "gstatic.com", "googleapis.com", "googleusercontent.com", "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
-  "dns": "https://1.1.1.1/dns-query"
+  "dns": "https://9.9.9.9/dns-query"
 }
 ```
 

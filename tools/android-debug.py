@@ -20,6 +20,7 @@ sub = p.add_subparsers(dest='command', required=True)
 install = sub.add_parser('install'); install.add_argument('apk')
 sub.add_parser('status'); sub.add_parser('profiles'); sub.add_parser('logs'); sub.add_parser('groups')
 core_logs = sub.add_parser('core-logs'); core_logs.add_argument('output')
+conns = sub.add_parser('connections'); conns.add_argument('output', help='Private local destination; live/closed connections with byte counters (browsing metadata)')
 overrides = sub.add_parser('overrides'); overrides.add_argument('id', type=int); overrides.add_argument('file', help='JSON override settings; {} removes overrides')
 node = sub.add_parser('node'); node.add_argument('group'); node.add_argument('outbound')
 sub.add_parser('start'); sub.add_parser('stop'); sub.add_parser('reload')
@@ -97,6 +98,11 @@ try:
         elif command == 'schedule': result = api('profiles/schedule', {'id': args.id, 'autoUpdate': args.auto == 'on', 'intervalMinutes': args.interval})
         elif command == 'core-logs':
             data = json.dumps(api('core-logs'), ensure_ascii=False, indent=2).encode()
+            fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'wb') as f: f.write(data)
+            result = {'saved': True, 'entriesMayContainBrowsingMetadata': True}
+        elif command == 'connections':
+            data = json.dumps(api('connections'), ensure_ascii=False, indent=1).encode()
             fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, 'wb') as f: f.write(data)
             result = {'saved': True, 'entriesMayContainBrowsingMetadata': True}

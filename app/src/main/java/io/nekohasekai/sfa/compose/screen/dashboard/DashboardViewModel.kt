@@ -640,9 +640,10 @@ class DashboardViewModel :
 
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
         viewModelScope.launch(Dispatchers.Main) {
-            val hasGroups = newGroups.isNotEmpty()
+            val visible = newGroups.filter { !it.tag.startsWith(io.nekohasekai.sfa.surge.SurgeConverter.RESOLVER_GROUP) }
+            val hasGroups = visible.isNotEmpty()
             updateState {
-                copy(hasGroups = hasGroups, groupsCount = newGroups.size)
+                copy(hasGroups = hasGroups, groupsCount = visible.size)
             }
         }
     }

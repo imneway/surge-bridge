@@ -18,7 +18,7 @@ object ProfileStore {
     const val MAX_BYTES = 16 * 1024 * 1024
 
     /** Generated-config generation; older snapshots are regenerated offline from their source at VPN start. */
-    const val GENERATION = 2
+    const val GENERATION = 3
     private const val TAG = "ProfileStore"
     private val lock = Any()
 

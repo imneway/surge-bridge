@@ -1,6 +1,8 @@
 package io.nekohasekai.sfa.debug
 
 import android.net.VpnService
+import io.nekohasekai.libbox.ConnectionEvents
+import io.nekohasekai.libbox.Connections
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.LogEntry
 import io.nekohasekai.libbox.OutboundGroup
@@ -48,6 +50,7 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     private val coreLogs = ArrayDeque<JSONObject>()
     private var logSequence = 0L
     private var groups = JSONArray()
+    private var connections: Connections? = null
 
     @Volatile private var currentMode = ""
 
@@ -61,7 +64,7 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     }
     private val coreClient = CommandClient(
         CoroutineScope(SupervisorJob() + Dispatchers.IO),
-        listOf(CommandClient.ConnectionType.Log, CommandClient.ConnectionType.Groups, CommandClient.ConnectionType.ClashMode),
+        listOf(CommandClient.ConnectionType.Log, CommandClient.ConnectionType.Groups, CommandClient.ConnectionType.ClashMode, CommandClient.ConnectionType.Connections),
         this,
         localOnly = true,
     )
@@ -94,6 +97,33 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
     @Synchronized
     override fun clearLogs() {
         coreLogs.clear()
+    }
+
+    @Synchronized
+    override fun writeConnectionEvents(events: ConnectionEvents) {
+        // A callback that passed the client epoch check before stop() must not repopulate the cleared store.
+        if (observed != Status.Started) return
+        val store = connections ?: Connections().also { connections = it }
+        store.applyEvents(events)
+    }
+
+    /** Live/closed connections with byte counters: diagnoses stalled app requests. Browsing metadata; no payloads. */
+    @Synchronized
+    private fun connectionsReport(): JSONArray {
+        val result = JSONArray()
+        val store = connections ?: return result
+        store.sortByDate()
+        val iterator = store.iterator()
+        while (iterator.hasNext()) {
+            val c = iterator.next()
+            result.put(
+                JSONObject().put("id", c.id).put("createdAt", c.createdAt).put("closedAt", c.closedAt)
+                    .put("network", c.network).put("destination", c.destination).put("domain", c.domain)
+                    .put("uid", c.processInfo?.userID ?: -1).put("processPath", c.processInfo?.processPath ?: "").put("rule", c.rule).put("outbound", c.outbound)
+                    .put("uplinkTotal", c.uplinkTotal).put("downlinkTotal", c.downlinkTotal),
+            )
+        }
+        return result
     }
 
     fun start() {
@@ -135,7 +165,10 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
             coreClient.disconnect()
             currentMode = ""
             availableModes = emptyList()
-            synchronized(this) { groups = JSONArray() }
+            synchronized(this) {
+                groups = JSONArray()
+                connections = null
+            }
         }
     }
     override fun onServiceAlert(type: Alert, message: String?) {
@@ -247,6 +280,7 @@ object DebugBridge : ServiceConnection.Callback, CommandClient.Handler {
                 "/v1/boot" -> ok(JSONObject().put("restoreOnBoot", Settings.restoreOnBoot).put("lastRunning", Settings.startedByUser))
                 "/v1/core-logs" -> ok(JSONObject().put("entries", synchronized(this) { JSONArray(coreLogs.toList()) }))
                 "/v1/groups" -> ok(JSONObject().put("groups", synchronized(this) { JSONArray(groups.toString()) }))
+                "/v1/connections" -> ok(JSONObject().put("connections", connectionsReport()))
                 "/v1/logs" -> ok(JSONObject().put("events", synchronized(this) { JSONArray(events.toList()) }))
                 else -> fail(404, "not_found")
             }

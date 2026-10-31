@@ -104,7 +104,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
         fun list(key: String) = options.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
         val runtime = if (surge) runCatching { org.json.JSONObject(file.readText()) }.getOrNull() else null
         val policies = runtime?.getJSONArray("outbounds")?.let { array ->
-            (0 until array.length()).map { array.getJSONObject(it) }.filter { it.optString("type") != "direct" }.map { it.getString("tag") }
+            (0 until array.length()).map { array.getJSONObject(it) }.filter { it.optString("type") != "direct" && !it.getString("tag").startsWith(io.nekohasekai.sfa.surge.SurgeConverter.RESOLVER_GROUP) }.map { it.getString("tag") }
         } ?: emptyList()
         return state.copy(
             compatibilityNotices = conversionNotices(profile),

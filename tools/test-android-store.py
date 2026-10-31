@@ -119,7 +119,7 @@ try:
     before = len(requests)
     api('service/start', {})
     wait('Started')
-    expect(report()['generation'] == 2, 'old cached profile regenerated to generation 2')
+    expect(report()['generation'] == 3, 'old cached profile regenerated to the current generation')
     expect(len(requests) == before, 'startup regeneration performs no subscription/rule downloads')
     upgraded = json.loads(adb('shell', 'run-as', PACKAGE, 'cat', runtime_path))
     expect(upgraded == original, 'offline regeneration restores the current staged DNS runtime exactly')

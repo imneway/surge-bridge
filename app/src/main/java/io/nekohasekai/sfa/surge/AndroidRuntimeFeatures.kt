@@ -89,7 +89,7 @@ object AndroidRuntimeFeatures {
         val nodes = (0 until array.length()).map { array.getJSONObject(it) }.associateBy { it.getString("tag") }
         val leafTypes = setOf("snell", "shadowsocks", "trojan", "http", "socks", "anytls")
         return nodes.values.filter { group ->
-            group.optString("type") == "selector" && group.getJSONArray("outbounds").let { members ->
+            group.optString("type") == "selector" && !group.getString("tag").startsWith(SurgeConverter.RESOLVER_GROUP) && group.getJSONArray("outbounds").let { members ->
                 (0 until members.length()).count { nodes[members.getString(it)]?.optString("type") in leafTypes } >= 2 &&
                     (0 until members.length()).all { nodes[members.getString(it)]?.optString("type") in leafTypes + "direct" }
             }

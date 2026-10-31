@@ -15,6 +15,9 @@ class SurgeConverter(private val fetchRules: (String, Int) -> String) {
     companion object {
         /** Tag prefix of the HTTPS resolvers dialed through each proxy policy ("surge-proxy-dns-N"). */
         const val PROXY_DNS = "surge-proxy-dns"
+
+        /** Hidden selector mirroring a DIRECT-capable group without DIRECT; the proxy-side resolver dials through it. */
+        const val RESOLVER_GROUP = "surge-resolver"
         const val LOCAL_DNS = "surge-dns-0"
         fun isSurge(source: String): Boolean = source.removePrefix("\uFEFF").lineSequence()
             .map(SurgeSyntax::clean).firstOrNull { it.isNotEmpty() }?.let { it.length > 2 && it.startsWith('[') && it.endsWith(']') && it[1].isLetter() } == true
@@ -37,6 +40,9 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
     private val policies = linkedSetOf("DIRECT").apply { addAll(rejectPolicies) }
     private val references = mutableListOf<Pair<Int, String>>()
     private val groupGraph = linkedMapOf<String, List<String>>()
+
+    /** Policy group membership only; groupGraph also carries node dial chains (underlying-proxy) for cycle checks. */
+    private val groupMembers = linkedMapOf<String, List<String>>()
     private val general = linkedMapOf<String, String>()
     private var defaultPolicy = "DIRECT"
     private var ipv6 = false
@@ -51,6 +57,7 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
 
     /** Proxy policy -> tag of its HTTPS resolver, allocated on first use. */
     private val proxyDnsTags = linkedMapOf<String, String>()
+    private val resolverGroups = linkedMapOf<String, String>()
 
     /** Set once a matcher-scoped proxy re-resolve exists; DIRECT fall-through then restores local answers. */
     private var proxyReResolved = false
@@ -102,11 +109,11 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
         if (isReject(defaultPolicy)) {
             routes.add(rejectAction(defaultPolicy))
         } // Fall-through traffic reaching a proxy FINAL must not carry locally resolved addresses.
-        else if (isProxyPolicy(defaultPolicy) && locallyResolved) {
+        else if (hasProxyExit(defaultPolicy) && locallyResolved) {
             routes.add(obj("action" to "resolve", "strategy" to strategy(), "server" to proxyDns(defaultPolicy)))
         } // Connections re-resolved for a proxy rule that no longer matched them fall back to DIRECT
         // with the profile's own answers, not addresses seen from the proxy exit.
-        else if (defaultPolicy == "DIRECT" && proxyReResolved) {
+        else if (!hasProxyExit(defaultPolicy) && proxyReResolved) {
             routes.add(obj("action" to "resolve", "strategy" to strategy()))
         }
         val tun = obj(
@@ -166,6 +173,8 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
 
     private fun addName(name: String, line: Int) {
         if (name.isBlank() || !policies.add(name)) SurgeSyntax.fail(line, "empty or duplicate policy name")
+        // Internal outbounds (resolver mirrors) and DNS servers live in the surge- namespace.
+        if (name.startsWith("surge-", ignoreCase = true)) SurgeSyntax.fail(line, "policy names starting with surge- are reserved")
     }
 
     private fun proxy(entry: Entry) {
@@ -283,6 +292,7 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
         }
         references.addAll(members.map { entry.line to it })
         groupGraph[name] = members
+        groupMembers[name] = members
         val node = obj("type" to if (kind == "select") "selector" else "urltest", "tag" to name, "outbounds" to members)
         if (kind == "url-test") {
             node.put("url", options["url"] ?: general["proxy-test-url"] ?: "https://www.gstatic.com/generate_204")
@@ -461,7 +471,7 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
             locallyResolved = true
             routes.add(obj("action" to "resolve", "strategy" to strategy()))
         }
-        if (isProxyPolicy(policy) && locallyResolved) {
+        if (hasProxyExit(policy) && locallyResolved) {
             // Only connections this rule routes to the proxy are re-resolved through that proxy, so
             // DIRECT traffic never depends on the proxy or carries addresses seen from its exit.
             routes.add(JSONObject(condition.json.toString()).put("action", "resolve").put("strategy", strategy()).put("server", proxyDns(policy)))
@@ -586,7 +596,7 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
             if (bootstrap == "system") {
                 obj("type" to "local", "tag" to "surge-bootstrap")
             } else {
-                obj("type" to "udp", "tag" to "surge-bootstrap", "server" to bootstrap)
+                plainServer(bootstrap).put("type", "udp").put("tag", "surge-bootstrap")
             },
         )
         for ((i, source) in sources.withIndex()) {
@@ -594,13 +604,13 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
             if (source == "system") {
                 servers.add(obj("type" to "local", "tag" to tag))
             } else if ("://" !in source) {
-                servers.add(obj("type" to "udp", "tag" to tag, "server" to source))
+                servers.add(plainServer(source).put("type", "udp").put("tag", tag))
             } else {
-                val uri = checkedURL(source, 0, setOf("https", "h3", "tls", "quic"))
+                val uri = dnsURL(source)
                 val type = uri.scheme
                 val server = obj("type" to type, "tag" to tag, "server" to uri.host, "domain_resolver" to "surge-bootstrap")
                 if (uri.port != -1) server.put("server_port", uri.port)
-                if (uri.scheme in setOf("https", "h3")) server.put("path", uri.rawPath.ifEmpty { "/dns-query" } + (uri.rawQuery?.let { "?$it" } ?: ""))
+                if (uri.scheme in setOf("https", "h3")) server.put("path", uri.rawPath.ifEmpty { "/dns-query" })
                 servers.add(server)
             }
         }
@@ -628,14 +638,16 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
                 if (ipv6) put("inet6_range", "fc00::/18")
             },
         )
+        // The proxy-side resolver must answer from the node's vantage point (local and China-side resolvers return
+        // polluted answers for blocked names), so it dials 1.1.1.1 DoH through the policy; a DIRECT-capable group is
+        // mirrored by a hidden selector so the resolver never falls onto the direct path, where 1.1.1.1 is unreachable.
         for ((policy, tag) in proxyDnsTags) {
-            servers.add(obj("type" to "https", "tag" to tag, "server" to "1.1.1.1", "path" to "/dns-query", "detour" to policy))
+            servers.add(obj("type" to "https", "tag" to tag, "server" to "1.1.1.1", "path" to "/dns-query", "detour" to resolverDetour(policy)))
         }
         if (proxyDnsTags.isNotEmpty()) {
-            warnings.add("Connections resolved for IP/GEOIP matching and then routed to ${proxyDnsTags.keys.joinToString()} are re-resolved over HTTPS DNS through that policy; DIRECT/REJECT rules use the profile DNS as in Surge.")
+            warnings.add("Connections resolved for IP/GEOIP matching and then routed to ${proxyDnsTags.keys.joinToString()} are re-resolved over HTTPS DNS (1.1.1.1) through that policy's selected node; DIRECT/REJECT rules use the profile DNS as in Surge.")
             if (proxyReResolved) warnings.add("IP/GEOIP rules targeting a proxy are re-evaluated with the proxy-side answer; a connection that no longer matches continues to later rules.")
-            val withDirect = proxyDnsTags.keys.filter { "DIRECT" in groupGraph[it].orEmpty() }
-            if (withDirect.isNotEmpty()) warnings.add("While ${withDirect.joinToString()} has DIRECT selected, its re-resolution still uses public HTTPS DNS over the direct path; use Direct mode for full local resolution.")
+            if (resolverGroups.isNotEmpty()) warnings.add("While ${resolverGroups.keys.joinToString()} has DIRECT selected, re-resolution keeps using the last selected node (hidden group ${SurgeConverter.RESOLVER_GROUP}-*) and those connections then go direct to node-side addresses; use Direct mode for full local resolution.")
         }
         rules.add(obj("query_type" to (if (ipv6) listOf("A", "AAAA") else listOf("A")), "action" to "route", "server" to "surge-fakeip"))
         // sing-box 1.14 keys its DNS cache by server, so a locally resolved (possibly polluted)
@@ -652,6 +664,59 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
         val prefix = if (parts.size == 2) parts[1].toIntOrNull() ?: SurgeSyntax.fail(line, "invalid IP prefix") else bits
         if (prefix !in 0..bits) SurgeSyntax.fail(line, "invalid IP prefix")
         return "$address/$prefix"
+    }
+
+    private fun reachesDirect(policy: String, seen: MutableSet<String> = mutableSetOf()): Boolean = policy == "DIRECT" || (seen.add(policy) && groupMembers[policy].orEmpty().any { reachesDirect(it, seen) })
+
+    /** False for DIRECT/REJECT and for groups whose every branch ends there; nodes (including unknown names) count as exits. */
+    private fun hasProxyExit(policy: String, seen: MutableSet<String> = mutableSetOf()): Boolean {
+        if (!isProxyPolicy(policy)) return false
+        val members = groupMembers[policy] ?: return true
+        return seen.add(policy) && members.any { hasProxyExit(it, seen) }
+    }
+
+    /** Outbound for a policy's proxy-side resolver: the policy itself unless it can select DIRECT, then a hidden mirror without DIRECT branches. */
+    private fun resolverDetour(policy: String): String {
+        if (policy !in groupMembers || !reachesDirect(policy)) return policy
+        resolverGroups[policy]?.let { return it }
+        val members = groupMembers.getValue(policy).filter(::hasProxyExit).map(::resolverDetour)
+        if (members.isEmpty()) return policy
+        val tag = "${SurgeConverter.RESOLVER_GROUP}-$policy"
+        resolverGroups[policy] = tag
+        outbounds.add(obj("type" to "selector", "tag" to tag, "outbounds" to members))
+        return tag
+    }
+
+    /** Plain DNS endpoint `ip`, `ip:port`, `[ipv6]:port` or a bare IPv6 literal as sing-box server/server_port fields. */
+    private fun plainServer(source: String): JSONObject {
+        val text = source.trim()
+        if (text.isEmpty()) SurgeSyntax.fail(0, "empty DNS server entry")
+        val host: String
+        val portText: String?
+        if (text.startsWith("[")) {
+            val end = text.indexOf(']')
+            if (end < 0 || (text.length > end + 1 && text[end + 1] != ':')) SurgeSyntax.fail(0, "invalid DNS server $text")
+            host = text.substring(1, end)
+            portText = text.substring(end + 1).removePrefix(":").ifEmpty { null }
+        } else if (text.count { it == ':' } == 1) {
+            host = text.substringBefore(':')
+            portText = text.substringAfter(':')
+        } else {
+            host = text
+            portText = null
+        }
+        // IPv4, IPv6 (including embedded IPv4 and zone suffixes such as %wlan0); sing-box parses the literal.
+        if (!host.matches(Regex("[0-9.]+|[0-9a-fA-F:.]+(%[A-Za-z0-9_.-]+)?"))) SurgeSyntax.fail(0, "invalid DNS server $text")
+        val server = obj("server" to host)
+        if (portText != null) server.put("server_port", portText.toIntOrNull()?.takeIf { it in 1..65535 } ?: SurgeSyntax.fail(0, "invalid DNS server port in $text"))
+        return server
+    }
+
+    private fun dnsURL(source: String): URI {
+        val uri = checkedURL(source, 0, setOf("https", "h3", "tls", "quic"))
+        // sing-box sets only the request path; query parameters would be percent-encoded into it.
+        if (uri.rawQuery != null || uri.rawFragment != null) SurgeSyntax.fail(0, "DNS URL query parameters are not supported: $source")
+        return uri
     }
 
     private fun checkedURL(value: String, line: Int, schemes: Set<String> = setOf("https", "http")): URI {

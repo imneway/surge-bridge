@@ -174,6 +174,16 @@ surge.5/6 的 `http_client.detour = DIRECT` 会在没有 GEOIP 缓存、首次�
 
 仍存在的差异：`resolve` 失败时 sing-box 直接断开连接，没有 Surge 的 `FINAL,dns-failed` 兜底；经代理侧 DoH 解析需要代理可用。详见 [compatibility.md](compatibility.md)。
 
+## 1.14.4-surge.9：代理侧解析器不再跟随组进入 DIRECT，Outlook 排查
+
+- 根因：surge.8 的代理侧重解析（1.1.1.1 DoH）`detour` 直接指向策略组。组选中 DIRECT 时该请求走直连，国内直连 1.1.1.1:443 超时，`resolve` 失败使连接被丢弃（真机日志 `pre-match[25] => resolve(surge-proxy-dns-0): dial tcp 1.1.1.1:443: i/o timeout`）。
+- 否决的方案：改用配置文件自身 DNS 经代理拨号。真机验证 AliDNS 经 LAX 节点对 Google 返回污染结果 104.244.42.197，且该结果会在解析器缓存中沿用到 TTL 到期，不可接受。
+- 修正：为每个可选 DIRECT 的策略组生成隐藏 `selector` `surge-resolver-<组名>`（成员去掉 DIRECT，嵌套组递归替换为镜像），解析器经镜像拨号；VPN 服务内的分组订阅把镜像同步到用户所选节点，选中 DIRECT 时保留上一个节点，此时经解析的连接会直连到节点侧地址（Direct 模式仍是完全本地解析）。镜像不出现在分组界面、故障切换候选和覆盖策略里；只按组成员递归（不含 underlying-proxy 链），无代理出口的分支被剔除，`surge-` 开头的策略名保留给内部对象。
+- 明文 DNS 的 `ip:port`、`[v6]:port`、`%zone` 现在正确拆分；DoH URL 带查询参数会被拒绝（sing-box 只设置请求路径）。
+- 快照代数升至 3：已安装设备在下次 VPN 启动时用缓存规则集离线重建运行配置，使修正立即生效，不必等订阅刷新。
+- 调试版新增 `GET /v1/connections`（`tools/android-debug.py connections <file>`）：每条连接的上下行字节、域名、uid、规则与出站，用于判断应用请求是否拿到响应。
+- Outlook 同步排查结论见 `docs/validation.md`：代理数据通路对所有合成请求（大上传、大下载、并发、HTTP/1.1、100 秒空闲复用、微软认证接口 401）均正常；Outlook 自身经 LAX 01/LAX 03、Rule 或 Global 模式的每条 office365 连接都只收到约 7.5 KB（握手加小响应）后反复重开连接，Direct 模式下出现 60 KB/32 KB 的真实数据交换。这不是分流错误，指向微软对该账号经美国机房出口的请求做了拒绝或挑战，需要用户确认 Outlook 界面提示与 iOS/macOS Surge 同节点下的行为。
+
 ## Google Play 能浏览但下载卡住
 
 商店接口与 APK 下载、下载协商和连通性探测可能命中不同规则。实测某份配置的 ChinaMax / GEOIP 直连规则让部分 Play 请求走直连并超时；仅代理 APK CDN 域名仍不足以完成下载。这些规则被如实转换，不应通过转换器偷偷绕过用户的 DIRECT 策略。

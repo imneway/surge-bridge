@@ -1,3 +1,5 @@
+import io.nekohasekai.sfa.surge.AndroidRoutingOverrides
+import io.nekohasekai.sfa.surge.AndroidRuntimeFeatures
 import io.nekohasekai.sfa.surge.SurgeConverter
 import io.nekohasekai.sfa.surge.SurgeException
 import org.json.JSONObject
@@ -67,6 +69,33 @@ fun main(args: Array<String>) {
     expect(SurgeConverter.isSurge("\uFEFF[General]\nloglevel=notify") && converter().convert("\uFEFF" + example).json == result.json, "UTF-8 BOM sources convert identically")
     val mixedServers = JSONObject(mixed.json).getJSONObject("dns").getJSONArray("servers").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.filter { it.optString("tag").startsWith(SurgeConverter.PROXY_DNS) }
     expect(mixedServers.map { it.getString("detour") }.toSet() == setOf("p", "q") && scoped.getString("server") == mixedServers.first { it.getString("detour") == "p" }.getString("tag") && geoipRe.getString("server") == mixedServers.first { it.getString("detour") == "q" }.getString("tag"), "each proxy policy resolves through its own detour")
+    fun proxyDnsOf(r: SurgeConverter.Result) = JSONObject(r.json).getJSONObject("dns").getJSONArray("servers").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.first { it.optString("tag").startsWith(SurgeConverter.PROXY_DNS) }
+    fun outboundsOf(r: SurgeConverter.Result) = JSONObject(r.json).getJSONArray("outbounds").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+    fun dnsProfile(general: String) = converter().convert("[General]\n$general\n[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\n[Rule]\nGEOIP,CN,DIRECT\nFINAL,p")
+    val withDirect = converter().convert("[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\nq=snell,192.0.2.2,443,psk=x,version=6\n[Proxy Group]\nG=select,p,q,DIRECT\nH=select,G,p\n[Rule]\nGEOIP,CN,DIRECT\nDOMAIN-SUFFIX,example.com,H\nFINAL,G")
+    val mirrorG = outboundsOf(withDirect).first { it.getString("tag") == "${SurgeConverter.RESOLVER_GROUP}-G" }
+    val mirrorH = outboundsOf(withDirect).first { it.getString("tag") == "${SurgeConverter.RESOLVER_GROUP}-H" }
+    expect(mirrorG.getString("type") == "selector" && mirrorG.getJSONArray("outbounds").let { it.length() == 2 && it.getString(0) == "p" && it.getString(1) == "q" }, "DIRECT-capable group gets a hidden mirror without DIRECT")
+    expect(mirrorH.getJSONArray("outbounds").let { it.getString(0) == "${SurgeConverter.RESOLVER_GROUP}-G" && it.getString(1) == "p" }, "nested DIRECT-capable members are mirrored recursively")
+    val withDirectDns = JSONObject(withDirect.json).getJSONObject("dns").getJSONArray("servers").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.filter { it.optString("tag").startsWith(SurgeConverter.PROXY_DNS) }
+    expect(withDirectDns.map { it.getString("detour") }.toSet() == setOf("${SurgeConverter.RESOLVER_GROUP}-G", "${SurgeConverter.RESOLVER_GROUP}-H") && withDirectDns.all { it.getString("server") == "1.1.1.1" }, "proxy-side resolvers dial through the mirrors, never through a DIRECT-capable group")
+    expect(withDirect.warnings.any { "hidden group" in it && "DIRECT selected" in it }, "mirror behavior disclosed")
+    expect(proxyDnsOf(mixed).getString("detour") == "p" && outboundsOf(mixed).none { it.getString("tag").startsWith(SurgeConverter.RESOLVER_GROUP) }, "policies that cannot select DIRECT need no mirror")
+    expect(AndroidRuntimeFeatures.eligibleGroups(JSONObject(withDirect.json)) == listOf("G") && runCatching { AndroidRoutingOverrides.apply(withDirect, JSONObject("""{"policy":"${SurgeConverter.RESOLVER_GROUP}-G"}""")) }.isFailure, "mirrors are neither failover candidates nor override policies")
+    val chained = converter().convert("[Proxy]\nq=snell,192.0.2.2,443,psk=x,version=6\np=snell,192.0.2.1,443,psk=x,version=6,underlying-proxy=U\n[Proxy Group]\nU=select,q,DIRECT\nD=select,DIRECT\nG=select,p,D,DIRECT\n[Rule]\nGEOIP,CN,DIRECT\nFINAL,G")
+    val chainedMirror = outboundsOf(chained).first { it.getString("tag") == "${SurgeConverter.RESOLVER_GROUP}-G" }
+    expect(chainedMirror.getJSONArray("outbounds").let { it.length() == 1 && it.getString(0) == "p" } && outboundsOf(chained).none { it.getString("tag") == "${SurgeConverter.RESOLVER_GROUP}-p" || it.getString("tag") == "${SurgeConverter.RESOLVER_GROUP}-U" }, "mirrors keep the chained node itself and drop branches without a proxy exit")
+    val directOnlyGroup = converter().convert("[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\n[Proxy Group]\nD=select,DIRECT\n[Rule]\nGEOIP,CN,DIRECT\nDOMAIN-SUFFIX,example.com,p\nFINAL,D")
+    expect(rulesOf(directOnlyGroup.json).none { it.optString("action") == "resolve" && it.has("server") && it.length() == 3 } && !directOnlyGroup.json.contains("${SurgeConverter.RESOLVER_GROUP}-D"), "a group without any proxy exit is not re-resolved through a proxy")
+    expect(runCatching { converter().convert("[Proxy]\nsurge-resolver-G=snell,192.0.2.1,443,psk=x,version=6\n[Rule]\nFINAL,surge-resolver-G") }.isFailure, "the surge- policy namespace is reserved")
+    val directOnlyFinal = converter().convert("[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\n[Proxy Group]\nD=select,DIRECT\n[Rule]\nGEOIP,CN,DIRECT\nGEOIP,US,p\nFINAL,D")
+    expect(rulesOf(directOnlyFinal.json).last().let { it.optString("action") == "resolve" && !it.has("server") } && rulesOf(directOnlyFinal.json).count { it.optString("action") == "resolve" && it.has("server") } == 1, "a DIRECT-only FINAL group restores local answers after a proxy re-resolve, like FINAL,DIRECT")
+    expect(runCatching { converter().convert("[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\n[Proxy Group]\nSurge-Resolver-X=select,p\n[Rule]\nFINAL,p") }.isFailure, "the reserved namespace is case-insensitive and covers groups")
+    val portDns = dnsProfile("dns-server=1.1.1.1:5353")
+    val portServers = JSONObject(portDns.json).getJSONObject("dns").getJSONArray("servers").let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+    expect(portServers.first { it.getString("tag") == SurgeConverter.LOCAL_DNS }.let { it.getString("server") == "1.1.1.1" && it.getInt("server_port") == 5353 }, "ip:port DNS entries split into server and server_port")
+    expect(dnsProfile("dns-server=::ffff:1.1.1.1, fe80::1%wlan0, [2001:db8::1]:5353").json.let { JSONObject(it).getJSONObject("dns").getJSONArray("servers").let { a -> (0 until a.length()).map { a.getJSONObject(it) } } }.let { servers -> servers.first { it.getString("tag") == SurgeConverter.LOCAL_DNS }.getString("server") == "::ffff:1.1.1.1" && servers.first { it.getString("tag") == "surge-dns-1" }.getString("server") == "fe80::1%wlan0" && servers.first { it.getString("tag") == "surge-dns-2" }.let { it.getString("server") == "2001:db8::1" && it.getInt("server_port") == 5353 } }, "IPv6 DNS literals keep embedded IPv4 and zone suffixes")
+    expect(runCatching { dnsProfile("dns-server=") }.isFailure && runCatching { dnsProfile("dns-server=1.1.1.1:0") }.isFailure && runCatching { dnsProfile("encrypted-dns-server=https://dns.example.com/dns-query?token=1") }.isFailure, "empty entries, bad ports and DoH query parameters are rejected")
     val directOnly = converter().convert("[Rule]\nGEOIP,CN,DIRECT\nFINAL,DIRECT")
     expect(!directOnly.json.contains(SurgeConverter.PROXY_DNS), "no proxy resolver without proxies")
     val noResolve = converter().convert("[Proxy]\np=snell,192.0.2.1,443,psk=x,version=6\n[Rule]\nIP-CIDR,0.0.0.0/0,DIRECT,no-resolve\nFINAL,p")

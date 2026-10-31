@@ -21,6 +21,7 @@ class UpdateProfileWork {
     companion object {
         private const val WORK_NAME = "UpdateProfile"
         private const val TAG = "UpdateProfileWork"
+        private const val ONE_SHOT = "oneShot"
 
         suspend fun reconfigureUpdater() {
             runCatching {
@@ -35,6 +36,7 @@ class UpdateProfileWork {
                 "UpdateProfileDueCheck",
                 androidx.work.ExistingWorkPolicy.KEEP,
                 androidx.work.OneTimeWorkRequest.Builder(UpdateTask::class.java)
+                    .setInputData(androidx.work.workDataOf(ONE_SHOT to true))
                     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build(),
             )
         }
@@ -72,7 +74,8 @@ class UpdateProfileWork {
     }
 
     class UpdateTask(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
-        override suspend fun doWork(): Result = if (refreshDueProfiles()) Result.success() else Result.retry()
+        // The periodic job owns retries; the app-start/VPN-start due check runs once.
+        override suspend fun doWork(): Result = if (refreshDueProfiles() || inputData.getBoolean(ONE_SHOT, false)) Result.success() else Result.retry()
     }
 }
 

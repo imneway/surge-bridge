@@ -325,6 +325,7 @@ class DashboardViewModel :
                 }
                 // Then delete from database
                 ProfileManager.delete(profile)
+                ProfileStore.deleteFiles(File(profile.typed.path))
                 UpdateProfileWork.reconfigureUpdater()
             } catch (e: Exception) {
                 // Reload profiles if deletion fails

@@ -699,4 +699,15 @@
     <string name="failover_cooldown">切換冷卻期</string>
     <string name="failover_probing">正在檢查連通性</string>
     <string name="failover_waiting">等待 VPN 或下一次檢查</string>
+    <string name="android_routing_overrides">Android 分流覆寫</string>
+    <string name="android_overrides_description">可選的逐設定檔設定，在 Surge 規則之前生效：讓指定應用或網域後綴使用某個代理策略，並指定代理側 HTTPS DNS（IPv4 位址），用於解析走代理流量的 IP/GEOIP 規則。不修改 Surge 來源檔案。</string>
+    <string name="override_policy">策略</string>
+    <string name="override_packages">應用套件名稱</string>
+    <string name="override_packages_hint">以逗號或換行分隔，例如 com.android.chrome</string>
+    <string name="override_domains">網域後綴</string>
+    <string name="override_domains_hint">例如 google.com, openai.com</string>
+    <string name="override_dns">代理側 DNS over HTTPS</string>
+    <string name="override_dns_hint">預設 https://1.1.1.1/dns-query，僅支援 IPv4 位址</string>
+    <string name="save_android_overrides">儲存覆寫設定</string>
+    <string name="editor_rejected_edit_restored">核心未能載入上次儲存的內容，已恢復上一版執行設定。目前顯示的是未生效的編輯內容，修正後請再次儲存。</string>
 </resources>

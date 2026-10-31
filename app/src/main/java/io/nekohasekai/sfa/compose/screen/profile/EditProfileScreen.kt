@@ -42,6 +42,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -255,14 +256,76 @@ fun EditProfileScreen(
                         }
                     }
                 }
+                if (uiState.isSurgeProfile && uiState.policyChoices.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(stringResource(R.string.android_routing_overrides), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.android_overrides_description), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.override_policy), style = MaterialTheme.typography.labelLarge)
+                            uiState.policyChoices.forEach { policy ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !uiState.isSaving) { viewModel.updateOverridePolicy(policy) },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = uiState.overridePolicy == policy,
+                                        onClick = { viewModel.updateOverridePolicy(policy) },
+                                        enabled = !uiState.isSaving,
+                                    )
+                                    Text(policy, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                            OutlinedTextField(
+                                value = uiState.overridePackages,
+                                onValueChange = viewModel::updateOverridePackages,
+                                label = { Text(stringResource(R.string.override_packages)) },
+                                supportingText = { Text(stringResource(R.string.override_packages_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isSaving,
+                                minLines = 1,
+                                maxLines = 4,
+                            )
+                            OutlinedTextField(
+                                value = uiState.overrideDomains,
+                                onValueChange = viewModel::updateOverrideDomains,
+                                label = { Text(stringResource(R.string.override_domains)) },
+                                supportingText = { Text(stringResource(R.string.override_domains_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isSaving,
+                                minLines = 1,
+                                maxLines = 4,
+                            )
+                            OutlinedTextField(
+                                value = uiState.overrideDns,
+                                onValueChange = viewModel::updateOverrideDns,
+                                label = { Text(stringResource(R.string.override_dns)) },
+                                supportingText = { Text(stringResource(R.string.override_dns_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isSaving,
+                                singleLine = true,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(onClick = viewModel::saveAndroidOverrides, enabled = !uiState.isSaving && uiState.overridesDirty) {
+                                    Text(stringResource(R.string.save_android_overrides))
+                                }
+                                if (uiState.hasAndroidOverrides) {
+                                    TextButton(onClick = viewModel::clearAndroidOverrides, enabled = !uiState.isSaving) {
+                                        Text(stringResource(R.string.clear_android_routing_overrides))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (uiState.compatibilityNotices.isNotEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Text(uiState.compatibilityNotices, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
-                        if (uiState.hasAndroidOverrides) {
-                            TextButton(onClick = viewModel::clearAndroidOverrides, enabled = !uiState.isSaving) {
-                                Text(stringResource(R.string.clear_android_routing_overrides))
-                            }
-                        }
                     }
                 }
 

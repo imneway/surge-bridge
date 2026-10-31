@@ -142,3 +142,34 @@ surge.5/6 的 `http_client.detour = DIRECT` 会在没有 GEOIP 缓存、首次�
 用同一签名覆盖安装新版后，再点击启动即可，不需要删除或重新导入现有订阅。构建产物交付到 `/Users/liuwei/Dropbox/Personal/Dev/Builds/Surge Android APK`。
 
 `tools/test-converter.sh` 现在还会运行真实内核的无缓存 HTTP 规则下载回归：旧配置必须复现错误，新生成和迁移配置必须实际下载成功并完成启动；测试用不可用默认代理验证规则下载不依赖最终代理出口。
+
+## 1.14.4-surge.8：完整 review 修正
+
+本版按一次完整代码 review 的结论修正了分流正确性、稳定性与兼容性三类问题，并经 Codex 两轮审查修正了 9 处实现缺陷（HTTP/AnyTLS 不接受 network 字段、重解析范围过宽、代理 DNS 共用、证书固定被丢弃、缓存写入无锁、离线重建无回退、BOM 处理被写坏、直连兜底拿到代理侧地址、重建结果校验未纳入回退）。
+
+**分流正确性**
+
+- 根因：sing-box 在任何 `resolve` 动作之后对所有出站（含 Snell）按解析出的 IP 拨号，而 Surge 始终把域名交给节点。此前只有被域名规则命中的站点能避开这个问题，其他落到代理的域名会带着本地 DNS 的结果（可能被污染或地域错误）发给节点。现在转换器分级解析：第一条 IP/GEOIP 规则前用配置 DNS 解析一次（Host 有效）；之后每条把连接送往代理策略的规则前，加一条同匹配器的重解析，经该策略专属的代理侧 DoH（`surge-proxy-dns-N`，默认 1.1.1.1，经该代理策略拨号）；代理 FINAL 前再整体重解析一次。只有真正走代理的连接才重解析，直连流量保留本地结果、不依赖代理可用；IP/GEOIP 规则在重解析后按代理侧结果重新判定，不再命中的连接继续后续规则，FINAL 为 DIRECT 时会先恢复本地解析结果。含 DIRECT 成员的策略组被手动切到 DIRECT 时，其重解析仍走公共 DoH 直连，完全本地解析请用 Direct 模式。没有 IP 规则命中的域名连接不解析，代理直接收到域名。
+- 代理侧 DoH 现在是每份 Surge 配置的内置能力，每个代理策略各一个，不再依赖 debug API 写入，正式版同样具备。`dns.final` 和节点 bootstrap 解析器保持配置 DNS，GEOIP,CN 等直连判定不再因覆盖设置改走境外解析。`server-cert-fingerprint-sha256` 仍拒绝导入，不会被静默丢弃。
+- 配置详情新增「Android 分流覆盖」卡片：可在界面里选择策略、填写应用包名、域名后缀和代理侧 DNS 端点，保存后即刻重载；原 debug API 入口保留。关闭最后一个故障切换组时，不再残留空的覆盖设置。
+- `udp-relay` 与 Surge 默认一致：未显式写 `udp-relay=true` 的 Snell/SS/Trojan/SOCKS5 节点仅走 TCP，并给出提示。原先默认放行 UDP 与 Surge 行为不同。HTTP 和 AnyTLS 出站本身只有 TCP。
+
+**稳定性**
+
+- 订阅/规则集下载移到 ProfileStore 锁外执行；启动 VPN、读取配置详情不再被慢速订阅阻塞。
+- 编辑器后台校验下载的规则集会写入缓存，不再每次停顿都重新下载全部过期规则集。
+- 启动时的运行配置迁移失败只记录日志并沿用现有配置，不再导致 VPN 无法启动。旧版生成的配置会用缓存中的规则集离线重建（不下载），以获得新的分级解析规则；缓存缺失时退回原有的 JSON 就地迁移。
+- 内核加载失败回滚后，被拒绝的编辑内容保留在编辑器中并给出提示，不再无声消失；再次保存成功后清除。
+- 删除配置时同时删除运行配置及 `.source`/`.running`/`.refresh`/`.rejected` 侧文件。
+- 打开 App/启动 VPN 触发的一次性到期检查不再在失败后无限重试；周期任务负责重试。
+
+**兼容性**（以下写法以前会让整份配置导入失败，现在正常导入）
+
+- `RULE-SET,LAN`（映射 ip_is_private）、`RULE-SET,SYSTEM`（省略并提示）、`DOMAIN-SET`、`DOMAIN-WILDCARD`、`DEST-PORT,8000-9000`、`SRC-IP` 裸地址、`CELLULAR`、`SUBNET,SSID/BSSID/TYPE`。
+- `REJECT-DROP`（reject drop）、`REJECT-TINYGIF`、`REJECT-NO-DROP`。
+- 规则修饰 `extended-matching`、`pre-matching`；策略组选项 `hidden`、`no-alert`、`timeout`、`evaluate-before-use`、`persistent`；HTTP/SOCKS5 位置参数 `user, pass`；节点参数 `no-error-alert`、`block-quic`、`ip-version`、`tos`、`ecn`、`interface` 等忽略并提示。
+- 主配置中的 PROCESS-NAME、USER-AGENT、IP-ASN、URL-REGEX、IN-PORT、DEVICE-NAME、SCRIPT 规则与规则集一致：省略并提示。
+- `[Panel]`、`[Replica]`、`[MITM]`、`[Script]`、`[URL Rewrite]` 等节整节忽略并提示；`[General]` 中未映射的键忽略并提示。`[Host]` 通配符/别名条目忽略并提示。
+- 仍然拒绝：会改变连通性的未知节点参数（如 ss 的 obfs）、改变成员的策略组选项（policy-path、include-all-proxies）、`hijack-dns` 非 `*:53`、不支持的协议或 Snell 版本。
+
+仍存在的差异：`resolve` 失败时 sing-box 直接断开连接，没有 Surge 的 `FINAL,dns-failed` 兜底；经代理侧 DoH 解析需要代理可用。详见 [compatibility.md](compatibility.md)。

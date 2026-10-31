@@ -22,12 +22,14 @@ object Vendor : VendorInterface {
     private const val TAG = "Vendor"
 
     override fun checkUpdate(activity: Activity, byUser: Boolean) {
-        if (byUser) activity.runOnUiThread {
-            MaterialAlertDialogBuilder(activity)
-                .setTitle("Surge Bridge")
-                .setMessage("This development fork is updated by installing a new Surge Bridge build.")
-                .setPositiveButton(R.string.ok, null)
-                .show()
+        if (byUser) {
+            activity.runOnUiThread {
+                MaterialAlertDialogBuilder(activity)
+                    .setTitle("Surge Bridge")
+                    .setMessage("This development fork is updated by installing a new Surge Bridge build.")
+                    .setPositiveButton(R.string.ok, null)
+                    .show()
+            }
         }
     }
 

@@ -143,7 +143,7 @@ try:
             cfg['inbounds'][0]['listen']='127.0.0.1'
             (temp/f'node{i}.json').write_text(json.dumps(cfg));log=open(temp/f'node{i}.log','w');logs.append(log)
             processes.append(subprocess.Popen([a.core,'run','-c',str(temp/f'node{i}.json')],stdout=log,stderr=log))
-        conf='[General]\nipv6=false\n[Proxy]\n'+'\n'.join(f'{name}=snell,10.0.2.2,{port},version=6,psk=fixture-only' for name,port in zip(['A','B','C'],ports))+'\n[Proxy Group]\nProxy=select,A,B,C,DIRECT\n[Rule]\nIP-CIDR,0.0.0.0/0,DIRECT,no-resolve\nFINAL,Proxy'
+        conf='[General]\nipv6=false\n[Proxy]\n'+'\n'.join(f'{name}=snell,10.0.2.2,{port},version=6,psk=fixture-only,udp-relay=true' for name,port in zip(['A','B','C'],ports))+'\n[Proxy Group]\nProxy=select,A,B,C,DIRECT\n[Rule]\nIP-CIDR,0.0.0.0/0,DIRECT,no-resolve\nFINAL,Proxy'
         item=api('profiles/import',{'name':'Failure-only fixture','source':conf});id=item['id']
         options={'policy':'Proxy','packages':['com.android.chrome'],'failoverGroups':['Proxy']}
         result=api('profiles/overrides',{'id':id,'overrides':options})

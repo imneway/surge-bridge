@@ -158,8 +158,10 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                         ?: throw IllegalArgumentException("Profile not found")
                 profile = loadedProfile
 
-                // Just load the content, we already have profile metadata from Intent
-                val content = ProfileStore.source(File(loadedProfile.typed.path))
+                // Prefer an edit the core refused to load, so the user can fix it rather than lose it.
+                val file = File(loadedProfile.typed.path)
+                val rejected = ProfileStore.rejectedSource(file)
+                val content = rejected ?: ProfileStore.source(file)
 
                 withContext(Dispatchers.Main) {
                     editor?.setText(content)
@@ -169,6 +171,11 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                             hasUnsavedChanges = false,
                             isLoading = false,
                             profileName = loadedProfile.name,
+                            configurationError = if (rejected != null) {
+                                io.nekohasekai.sfa.Application.application.getString(io.nekohasekai.sfa.R.string.editor_rejected_edit_restored)
+                            } else {
+                                it.configurationError
+                            },
                         )
                     }
                 }

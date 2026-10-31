@@ -6,13 +6,15 @@ import java.net.URI
 
 /** Explicit per-profile Android settings; kept beside the unchanged Surge source snapshot. */
 object AndroidRoutingOverrides {
+    val FIELDS = setOf("policy", "packages", "domains", "dns", "failoverGroups")
+
     fun apply(result: SurgeConverter.Result, overrides: JSONObject): SurgeConverter.Result {
         if (overrides.length() == 0) return result
         require(result.sourceFormat == "surge") { "Android routing overrides require a Surge profile" }
-        val allowed = setOf("policy", "packages", "domains", "dns", "failoverGroups")
-        require(overrides.keys().asSequence().all { it in allowed }) { "Unknown Android override field" }
+        require(overrides.keys().asSequence().all { it in FIELDS }) { "Unknown Android override field" }
         val config = JSONObject(result.json)
-        val policy = overrides.getString("policy")
+        val policy = overrides.optString("policy")
+        require(policy.isNotEmpty()) { "Overrides require a policy" }
         val outbounds = config.getJSONArray("outbounds")
         require((0 until outbounds.length()).any { outbounds.getJSONObject(it).getString("tag") == policy }) { "Unknown override policy" }
         require(policy != "DIRECT") { "Overrides require a proxy policy" }
@@ -64,21 +66,29 @@ object AndroidRoutingOverrides {
             require(uri.scheme == "https" && uri.host?.matches(Regex("[0-9]+(?:\\.[0-9]+){3}")) == true && uri.userInfo == null && uri.fragment == null && uri.query == null) { "Override DNS requires an HTTPS IPv4 endpoint without credentials/query" }
             require(uri.host.split('.').all { it.toIntOrNull() in 0..255 }) { "Invalid override DNS IP" }
             val dns = config.getJSONObject("dns")
-            val server = obj(
-                "type" to "https",
-                "tag" to "android-proxy-dns",
-                "server" to uri.host,
-                "path" to uri.rawPath.ifEmpty { "/dns-query" },
-                "detour" to policy,
-            )
-            if (uri.port != -1) {
-                require(uri.port in 1..65535)
-                server.put("server_port", uri.port)
+            val servers = dns.getJSONArray("servers")
+            // Reconfigure the converter's per-policy proxy-side resolvers; each keeps its own detour.
+            var reconfigured = 0
+            for (i in 0 until servers.length()) {
+                val server = servers.getJSONObject(i)
+                if (!server.optString("tag").startsWith(SurgeConverter.PROXY_DNS)) continue
+                server.put("server", uri.host).put("path", uri.rawPath.ifEmpty { "/dns-query" })
+                if (uri.port != -1) {
+                    require(uri.port in 1..65535)
+                    server.put("server_port", uri.port)
+                } else {
+                    server.remove("server_port")
+                }
+                reconfigured++
             }
-            dns.getJSONArray("servers").put(server)
-            dns.put("final", "android-proxy-dns")
-            // The original route.default_domain_resolver remains the node bootstrap resolver.
-            warnings.add("Android override: target DNS uses ${uri.host} over HTTPS through $policy; node bootstrap DNS remains from the Surge profile.")
+            // route.default_domain_resolver and dns.final remain the profile DNS for direct traffic.
+            warnings.add(
+                if (reconfigured > 0) {
+                    "Android override: proxy-bound IP/GEOIP re-resolution uses ${uri.host} over HTTPS through each proxy policy; node bootstrap DNS remains from the Surge profile."
+                } else {
+                    "Android override: the DNS setting has no effect because this profile never resolves proxy-bound traffic (no IP/GEOIP rule precedes a proxy policy)."
+                },
+            )
         }
         return result.copy(json = config.toString(2), warnings = warnings)
     }

@@ -696,4 +696,15 @@
     <string name="failover_cooldown">切换冷却期</string>
     <string name="failover_probing">正在检查连通性</string>
     <string name="failover_waiting">等待 VPN 或下一次检查</string>
+    <string name="android_routing_overrides">Android 分流覆盖</string>
+    <string name="android_overrides_description">可选的按配置设置，在 Surge 规则之前生效：让指定应用或域名后缀使用某个代理策略，并指定代理侧 HTTPS DNS（IPv4 地址），用于解析走代理流量的 IP/GEOIP 规则。不修改 Surge 源文件。</string>
+    <string name="override_policy">策略</string>
+    <string name="override_packages">应用包名</string>
+    <string name="override_packages_hint">用逗号或换行分隔，例如 com.android.chrome</string>
+    <string name="override_domains">域名后缀</string>
+    <string name="override_domains_hint">例如 google.com, openai.com</string>
+    <string name="override_dns">代理侧 DNS over HTTPS</string>
+    <string name="override_dns_hint">默认 https://1.1.1.1/dns-query，仅支持 IPv4 地址</string>
+    <string name="save_android_overrides">保存覆盖设置</string>
+    <string name="editor_rejected_edit_restored">内核未能加载上次保存的内容，已恢复上一版运行配置。当前显示的是未生效的编辑内容，修正后请再次保存。</string>
 </resources>

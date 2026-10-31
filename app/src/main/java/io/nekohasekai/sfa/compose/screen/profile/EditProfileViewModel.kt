@@ -29,9 +29,17 @@ import java.util.Locale
 data class EditProfileUiState(
     val profile: Profile? = null,
     val compatibilityNotices: String = "",
+    val isSurgeProfile: Boolean = false,
     val hasAndroidOverrides: Boolean = false,
     val failoverGroups: List<String> = emptyList(),
     val enabledFailoverGroups: Set<String> = emptySet(),
+    // Android override editor (Surge profiles only)
+    val policyChoices: List<String> = emptyList(),
+    val overridePolicy: String = "",
+    val overridePackages: String = "",
+    val overrideDomains: String = "",
+    val overrideDns: String = "",
+    val overridesDirty: Boolean = false,
     val refreshStatus: String = "",
     val name: String = "",
     val icon: String? = null,
@@ -87,58 +95,94 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
         return "$date · " + getApplication<Application>().getString(label)
     }
 
-    fun toggleFailover(group: String, enabled: Boolean) {
-        val profile = _uiState.value.profile ?: return
+    /** Reads the stored Android settings of a profile into editor fields. */
+    private fun overrideState(profile: Profile, state: EditProfileUiState): EditProfileUiState {
+        val file = File(profile.typed.path)
+        val report = ProfileStore.report(file)
+        val surge = report.optString("format") == "surge"
+        val options = report.getJSONObject("androidOverrides")
+        fun list(key: String) = options.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
+        val runtime = if (surge) runCatching { org.json.JSONObject(file.readText()) }.getOrNull() else null
+        val policies = runtime?.getJSONArray("outbounds")?.let { array ->
+            (0 until array.length()).map { array.getJSONObject(it) }.filter { it.optString("type") != "direct" }.map { it.getString("tag") }
+        } ?: emptyList()
+        return state.copy(
+            compatibilityNotices = conversionNotices(profile),
+            isSurgeProfile = surge,
+            hasAndroidOverrides = options.length() > 0,
+            failoverGroups = runtime?.let { io.nekohasekai.sfa.surge.AndroidRuntimeFeatures.eligibleGroups(it) } ?: emptyList(),
+            enabledFailoverGroups = list("failoverGroups").toSet(),
+            policyChoices = policies,
+            overridePolicy = options.optString("policy").ifEmpty { policies.firstOrNull() ?: "" },
+            overridePackages = list("packages").joinToString("\n"),
+            overrideDomains = list("domains").joinToString("\n"),
+            overrideDns = options.optString("dns"),
+            overridesDirty = false,
+        )
+    }
+
+    private fun splitEntries(text: String) = text.split(Regex("[,\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+    /** Validates, publishes and reloads Android settings; empty settings clear them. */
+    private fun applyOverrides(profile: Profile, options: org.json.JSONObject, onFailure: (Exception) -> String?) {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isSaving = true) }
             try {
                 val file = File(profile.typed.path)
-                val options = ProfileStore.report(file).getJSONObject("androidOverrides")
-                if (!options.has("policy")) options.put("policy", group)
-                val chosen = _uiState.value.enabledFailoverGroups.toMutableSet()
-                if (enabled) chosen.add(group) else chosen.remove(group)
-                options.put("failoverGroups", org.json.JSONArray(chosen.toList()))
                 ProfileStore.save(file, ProfileStore.source(file), options)
                 ProfileManager.update(profile)
                 val reloadFailed = profile.id == Settings.selectedProfile && runCatching { Libbox.newStandaloneCommandClient().serviceReload() }.isFailure
                 _uiState.update {
-                    it.copy(
+                    overrideState(profile, it).copy(
                         isSaving = false,
-                        enabledFailoverGroups = chosen,
-                        hasAndroidOverrides = true,
-                        compatibilityNotices = conversionNotices(profile),
-                        errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null,
-                    )
-                }
-            } catch (_: Exception) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = getApplication<Application>().getString(R.string.failover_save_failed)) }
-            }
-        }
-    }
-
-    fun clearAndroidOverrides() {
-        val profile = _uiState.value.profile ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isSaving = true) }
-            try {
-                val file = File(profile.typed.path)
-                ProfileStore.save(file, ProfileStore.source(file), org.json.JSONObject())
-                ProfileManager.update(profile)
-                val reloadFailed = profile.id == Settings.selectedProfile &&
-                    runCatching { Libbox.newStandaloneCommandClient().serviceReload() }.isFailure
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        compatibilityNotices = conversionNotices(profile),
-                        hasAndroidOverrides = false,
-                        enabledFailoverGroups = emptySet(),
                         errorMessage = if (reloadFailed) getApplication<Application>().getString(R.string.android_overrides_restart) else null,
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = e.message) }
+                _uiState.update { it.copy(isSaving = false, errorMessage = onFailure(e)) }
             }
         }
+    }
+
+    fun updateOverridePolicy(value: String) = _uiState.update { it.copy(overridePolicy = value, overridesDirty = true) }
+    fun updateOverridePackages(value: String) = _uiState.update { it.copy(overridePackages = value, overridesDirty = true) }
+    fun updateOverrideDomains(value: String) = _uiState.update { it.copy(overrideDomains = value, overridesDirty = true) }
+    fun updateOverrideDns(value: String) = _uiState.update { it.copy(overrideDns = value, overridesDirty = true) }
+
+    fun saveAndroidOverrides() {
+        val state = _uiState.value
+        val profile = state.profile ?: return
+        applyOverrides(profile, buildOverrides(state, state.enabledFailoverGroups)) { it.message }
+    }
+
+    private fun buildOverrides(state: EditProfileUiState, failover: Set<String>): org.json.JSONObject {
+        val options = org.json.JSONObject()
+        val packages = splitEntries(state.overridePackages)
+        val domains = splitEntries(state.overrideDomains)
+        val dns = state.overrideDns.trim()
+        if (packages.isEmpty() && domains.isEmpty() && dns.isEmpty() && failover.isEmpty()) return options
+        options.put("policy", state.overridePolicy)
+        if (packages.isNotEmpty()) options.put("packages", org.json.JSONArray(packages))
+        if (domains.isNotEmpty()) options.put("domains", org.json.JSONArray(domains))
+        if (dns.isNotEmpty()) options.put("dns", dns)
+        if (failover.isNotEmpty()) options.put("failoverGroups", org.json.JSONArray(failover.toList()))
+        return options
+    }
+
+    fun toggleFailover(group: String, enabled: Boolean) {
+        val state = _uiState.value
+        val profile = state.profile ?: return
+        val chosen = state.enabledFailoverGroups.toMutableSet()
+        if (enabled) chosen.add(group) else chosen.remove(group)
+        // Use the stored settings, not unsaved editor text, so a switch never publishes a half-typed override.
+        val stored = overrideState(profile, state)
+        val options = buildOverrides(stored.copy(overridePolicy = stored.overridePolicy.ifEmpty { group }), chosen)
+        applyOverrides(profile, options) { getApplication<Application>().getString(R.string.failover_save_failed) }
+    }
+
+    fun clearAndroidOverrides() {
+        val profile = _uiState.value.profile ?: return
+        applyOverrides(profile, org.json.JSONObject()) { it.message }
     }
 
     fun loadProfile(profileId: Long) {
@@ -157,12 +201,8 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
 
                 val typedProfile = profile.typed
                 _uiState.update {
-                    it.copy(
+                    overrideState(profile, it).copy(
                         profile = profile,
-                        compatibilityNotices = conversionNotices(profile),
-                        hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
-                        failoverGroups = if (ProfileStore.report(File(profile.typed.path)).optString("format") == "surge") io.nekohasekai.sfa.surge.AndroidRuntimeFeatures.eligibleGroups(org.json.JSONObject(File(profile.typed.path).readText())) else emptyList(),
-                        enabledFailoverGroups = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").optJSONArray("failoverGroups")?.let { array -> (0 until array.length()).map { array.getString(it) }.toSet() } ?: emptySet(),
                         refreshStatus = refreshStatus(profile),
                         name = profile.name,
                         originalName = profile.name,
@@ -353,13 +393,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
 
                 // Update UI state with success indicator
                 _uiState.update {
-                    it.copy(
+                    overrideState(profile, it).copy(
                         lastUpdated = profile.typed.lastUpdated,
                         isUpdating = false,
                         showUpdateSuccess = true,
                         refreshStatus = refreshStatus(profile),
-                        compatibilityNotices = conversionNotices(profile),
-                        hasAndroidOverrides = ProfileStore.report(File(profile.typed.path)).getJSONObject("androidOverrides").length() > 0,
                     )
                 }
 

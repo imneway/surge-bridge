@@ -767,4 +767,15 @@
     <string name="failover_cooldown">Waiting after a recent switch</string>
     <string name="failover_probing">Checking connectivity</string>
     <string name="failover_waiting">Waiting for the VPN or next check</string>
+    <string name="android_routing_overrides">Android routing overrides</string>
+    <string name="android_overrides_description">Optional per-profile rules evaluated before the Surge rules: send selected apps or domain suffixes to a proxy policy, and choose the HTTPS DNS (IPv4 endpoint) that resolves IP/GEOIP rules for proxy-bound traffic through that policy. The Surge source is not modified.</string>
+    <string name="override_policy">Policy</string>
+    <string name="override_packages">App package names</string>
+    <string name="override_packages_hint">Separate with commas or new lines, e.g. com.android.chrome</string>
+    <string name="override_domains">Domain suffixes</string>
+    <string name="override_domains_hint">e.g. google.com, openai.com</string>
+    <string name="override_dns">Proxy-side DNS over HTTPS</string>
+    <string name="override_dns_hint">Default https://1.1.1.1/dns-query; IPv4 address only</string>
+    <string name="save_android_overrides">Save overrides</string>
+    <string name="editor_rejected_edit_restored">The core refused to load the last saved content, so the previous running configuration was restored. This editor shows the rejected edit; fix it and save again.</string>
 </resources>

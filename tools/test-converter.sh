@@ -14,6 +14,7 @@ mkdir -p .local-tools
     test/surge/SurgeConverterTest.kt test/surge/AndroidRoutingOverridesTest.kt test/surge/AndroidRuntimeFeaturesTest.kt -cp "$JSON_JAR" -include-runtime -d .local-tools/converter-tests.jar
 "$JAVA_HOME/bin/java" -cp ".local-tools/converter-tests.jar:$JSON_JAR" SurgeConverterTestKt
 "$SING_BOX" check -c .local-tools/test-converted.json
+"$SING_BOX" check -c .local-tools/test-protocols.json
 
 "$JAVA_HOME/bin/java" -cp ".local-tools/converter-tests.jar:$JSON_JAR" AndroidRoutingOverridesTestKt
 "$SING_BOX" check -c .local-tools/overrides-test.json

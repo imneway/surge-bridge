@@ -36,7 +36,7 @@ Release source set contains only a no-op DebugBridge, without listener or token 
 
 ## Android settings and phone diagnostics
 
-Overrides are explicit per-profile settings stored beside the original Surge source. A same-profile edit, local update or subscription refresh preserves them; a newly imported profile starts without them. Only Surge profiles accept nonempty overrides. Apply with `tools/android-debug.py overrides ID settings.json`, then `reload` if the selected VPN is running. The profile detail shows each override and offers a remove button.
+Overrides are explicit per-profile settings stored beside the original Surge source. A same-profile edit, local update or subscription refresh preserves them; a newly imported profile starts without them. Only Surge profiles accept nonempty overrides, and nonempty overrides require `policy`. Apply with `tools/android-debug.py overrides ID settings.json`, then `reload` if the selected VPN is running. The profile detail shows each override and offers a remove button.
 
 Example (policy must exist in the imported configuration):
 
@@ -49,7 +49,7 @@ Example (policy must exist in the imported configuration):
 }
 ```
 
-DNS interception remains first; package and domain overrides then precede original IP/GEOIP rules. Package overrides include IP-only traffic and all destinations of the named apps. Domain matches keep the destination hostname for Snell, avoiding premature local resolution. Optional DNS uses HTTPS through the chosen policy and requires an IPv4 literal endpoint to avoid bootstrap recursion. The original node/default route resolver and explicit DNS rules remain; this is not universal replacement of every DNS lookup. A selector still follows its currently selected member.
+DNS interception remains first; package and domain overrides then precede original IP/GEOIP rules. Package overrides include IP-only traffic and all destinations of the named apps. Domain matches keep the destination hostname for Snell, avoiding premature local resolution. Since surge.8 every Surge profile already carries a proxy-side HTTPS resolver (`surge-proxy-dns`, 1.1.1.1 through the FINAL proxy) used before proxy-bound IP/GEOIP rules; the optional `dns` field only replaces that endpoint/detour and requires an IPv4 literal to avoid bootstrap recursion. `dns.final`, the node bootstrap resolver and explicit DNS rules stay on the profile DNS. The same settings are editable in the profile detail screen, including the release build. A selector still follows its currently selected member.
 
 Core logs remove ANSI escapes, redact HTTP URL query strings, and skip entries containing `psk` or `password`. This is not complete anonymization: destinations, node labels and addresses may remain. `core-logs .private/core.json` writes a private local file; review before sharing. The buffer may reset when the core reconnects, and sequence numbers need not be contiguous. Group tags can also contain user-chosen sensitive text.
 

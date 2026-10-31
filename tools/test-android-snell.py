@@ -59,7 +59,7 @@ try:
         with open(Path(temp) / 'core.log', 'w') as log:
             process = subprocess.Popen([str(Path(args.core).resolve()), 'run', '-c', str(path)], stdout=log, stderr=log)
             try:
-                source = f'[General]\nipv6=false\n[Proxy]\nTest=snell,10.0.2.2,{snell_port},psk=android-test-only,version=6\n[Rule]\nFINAL,Test'
+                source = f'[General]\nipv6=false\n[Proxy]\nTest=snell,10.0.2.2,{snell_port},psk=android-test-only,version=6,udp-relay=true\n[Rule]\nFINAL,Test'
                 profile = api('profiles/import', {'name': 'Android Snell Integration', 'source': source})
                 api('profiles/select', {'id': profile['id']}); api('service/start', {}); wait_state('Started')
                 response = adb('shell', 'toybox', 'nc', '-w', '5', '203.0.113.17', '18080', input=b'GET / HTTP/1.0\r\nHost: test\r\n\r\n').stdout

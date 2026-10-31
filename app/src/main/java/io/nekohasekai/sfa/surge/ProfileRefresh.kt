@@ -22,7 +22,7 @@ object ProfileRefresh {
         ) {
             return@withLock false
         }
-        require(profile.typed.type == TypedProfile.Type.Remote) { "Only remote profiles have a subscription URL" }
+        require(latest.typed.type == TypedProfile.Type.Remote) { "Only remote profiles have a subscription URL" }
         val attempted = System.currentTimeMillis()
         try {
             val source = ProfileStore.download(latest.typed.remoteURL)

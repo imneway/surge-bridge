@@ -5,6 +5,9 @@ class SurgeException(val line: Int, val reason: String) : IllegalArgumentExcepti
 internal data class Entry(val line: Int, val text: String)
 
 internal object SurgeSyntax {
+    /** Sections whose entries participate in conversion. Others are ignored with a notice. */
+    val CONVERTED_SECTIONS = setOf("general", "proxy", "proxy group", "rule", "host")
+
     fun split(text: String, line: Int, separator: Char = ','): List<String> {
         val result = mutableListOf<String>()
         val part = StringBuilder()
@@ -12,17 +15,39 @@ internal object SurgeSyntax {
         var escaped = false
         var depth = 0
         for (c in text) {
-            if (escaped) { part.append(c); escaped = false; continue }
+            if (escaped) {
+                part.append(c)
+                escaped = false
+                continue
+            }
             if (quote != null) {
-                if (c == '\\') { escaped = true; part.append(c) }
-                else { part.append(c); if (c == quote) quote = null }
+                if (c == '\\') {
+                    escaped = true
+                    part.append(c)
+                } else {
+                    part.append(c)
+                    if (c == quote) quote = null
+                }
                 continue
             }
             when {
-                c == '"' || c == '\'' -> { quote = c; part.append(c) }
-                c == '(' -> { depth++; part.append(c) }
-                c == ')' -> { depth--; if (depth < 0) fail(line, "unbalanced parentheses"); part.append(c) }
-                c == separator && depth == 0 -> { result.add(part.toString().trim()); part.setLength(0) }
+                c == '"' || c == '\'' -> {
+                    quote = c
+                    part.append(c)
+                }
+                c == '(' -> {
+                    depth++
+                    part.append(c)
+                }
+                c == ')' -> {
+                    depth--
+                    if (depth < 0) fail(line, "unbalanced parentheses")
+                    part.append(c)
+                }
+                c == separator && depth == 0 -> {
+                    result.add(part.toString().trim())
+                    part.setLength(0)
+                }
                 else -> part.append(c)
             }
         }
@@ -53,8 +78,8 @@ internal object SurgeSyntax {
     }
 
     fun boolean(value: String, line: Int): Boolean = when (value.lowercase()) {
-        "true" -> true
-        "false" -> false
+        "true", "1", "on", "yes" -> true
+        "false", "0", "off", "no" -> false
         else -> fail(line, "expected true or false")
     }
 
@@ -66,16 +91,28 @@ internal object SurgeSyntax {
         var escaped = false
         for (i in text.indices) {
             val c = text[i]
-            if (escaped) { escaped = false; continue }
+            if (escaped) {
+                escaped = false
+                continue
+            }
             if (quote != null) {
-                if (c == '\\') escaped = true else if (c == quote) quote = null
-            } else if (c == '"' || c == '\'') quote = c
-            else if ((c == '#' || c == ';' || (c == '/' && text.getOrNull(i + 1) == '/')) &&
-                (i == 0 || text[i - 1].isWhitespace())) return text.substring(0, i).trim()
+                if (c == '\\') {
+                    escaped = true
+                } else if (c == quote) {
+                    quote = null
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c
+            } else if ((c == '#' || c == ';' || (c == '/' && text.getOrNull(i + 1) == '/')) &&
+                (i == 0 || text[i - 1].isWhitespace())
+            ) {
+                return text.substring(0, i).trim()
+            }
         }
         return text.trim()
     }
 
+    /** Returns every section, including ones without an Android equivalent, keyed by lowercase name. */
     fun sections(source: String): Map<String, List<Entry>> {
         val sections = linkedMapOf<String, MutableList<Entry>>()
         var section: String? = null
@@ -83,10 +120,8 @@ internal object SurgeSyntax {
             val text = clean(raw)
             if (text.isEmpty()) return@forEachIndexed
             if (text.startsWith('[') && text.endsWith(']')) {
-                section = text.substring(1, text.length - 1).lowercase()
-                if (section !in setOf("general", "proxy", "proxy group", "rule", "host")) {
-                    fail(index + 1, "unsupported section $section")
-                }
+                section = text.substring(1, text.length - 1).trim().lowercase()
+                if (section.isEmpty()) fail(index + 1, "empty section name")
                 sections.getOrPut(section) { mutableListOf() }
             } else {
                 val current = section ?: fail(index + 1, "content outside a section")

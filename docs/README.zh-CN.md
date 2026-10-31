@@ -173,3 +173,11 @@ surge.5/6 的 `http_client.detour = DIRECT` 会在没有 GEOIP 缓存、首次�
 - 仍然拒绝：会改变连通性的未知节点参数（如 ss 的 obfs）、改变成员的策略组选项（policy-path、include-all-proxies）、`hijack-dns` 非 `*:53`、不支持的协议或 Snell 版本。
 
 仍存在的差异：`resolve` 失败时 sing-box 直接断开连接，没有 Surge 的 `FINAL,dns-failed` 兜底；经代理侧 DoH 解析需要代理可用。详见 [compatibility.md](compatibility.md)。
+
+## Google Play 能浏览但下载卡住
+
+商店接口与 APK 下载、下载协商和连通性探测可能命中不同规则。实测某份配置的 ChinaMax / GEOIP 直连规则让部分 Play 请求走直连并超时；仅代理 APK CDN 域名仍不足以完成下载。这些规则被如实转换，不应通过转换器偷偷绕过用户的 DIRECT 策略。
+
+需要 Play 全部使用代理时，在当前配置的「Android 分流覆盖」中选择代理策略（例如 `Proxy`），应用包名填写 `com.android.vending`。已有的 `xn--ngstr-lra8j.com` 域名后缀覆盖可以保留。无需填写 DNS 覆盖，保持 Rule 模式并保存；若旧下载仍在退避等待，可取消后重试。确保策略组实际选中可用代理节点。
+
+这是按配置保存的 Android 本机设置，不改动 Surge 原文，其他应用继续按原规则分流。2026-10-31 真机验证了 Gmail 完整下载安装，过程保持 Rule 模式；成功阶段采样的 32 条 Play 出站日志均为 Snell。具体规则归因和测试范围见 [validation.md](validation.md#follow-up-exact-rule-attribution-and-completed-rule-mode-download)。

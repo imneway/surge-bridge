@@ -111,6 +111,10 @@ Version 750 (`1.14.4-surge.5`) replaces generated GEOIP `download_detour` with i
 - 88 assertions passed (37 converter, 19 routing overrides, 32 runtime/failover). Regression coverage includes already mode-enabled legacy caches, idempotence, direct-only profiles, existing explicit HTTP clients, native JSON passthrough and preservation of all unrelated runtime fields.
 - Four generated configurations passed sing-box 1.14.4 validation, including a migrated legacy cache, without deprecation output.
 - `:app:assembleOtherDebug` succeeded; the arm64 APK installed successfully over surge.4 on the OPPO device.
-- Physical post-install checks are pending: USB shell and API calls stalled after installation, and transport reconnect reported the device offline. This is not counted as migration/UI/connectivity success. The pre-install app data backup and diagnostics are kept only under ignored `.private/http-client-migration/`.
+- Physical post-install checks completed after the user reconnected USB. On the real saved profile, parsed runtime JSON differed only by the intended downloader field replacement; the complete source/overrides snapshot stayed identical. Original profile ID, selected node and Rule mode were retained.
+- The app dashboard was inspected after startup: no deprecation dialog, and the initial core-log snapshot contained no deprecation/download_detour entries. Warning suppression was not enabled.
+- Google and gstatic each returned three verified-TLS HTTP 204 responses (6/6). A new ChatGPT temporary chat returned `9 + 6 = 15`; correlated app connections were 21 Snell and 0 DIRECT.
+- Installed APK SHA-256 matched the surge.5 artifact. System always-on VPN and lockdown remained unset/off as requested. Final service state was Started with the sole original profile; temporary probe/XML files and the test API forward were removed.
+- The initial USB interruption and private pre-install backup/diagnostics are retained only in ignored `.private/http-client-migration/`. No device reboot was needed.
 
 Reference: https://sing-box.sagernet.org/configuration/rule-set/ and https://sing-box.sagernet.org/configuration/shared/http-client/

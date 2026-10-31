@@ -117,7 +117,7 @@ Surge GEOIP 规则现在使用 `http_client: {"detour": "DIRECT"}`，替代 sing
 
 正式版包名为 `io.github.liuw.surgebridge`，可与 `.debug` 调试版共存，配置和 VPN 授权独立，首次使用需要导入配置并授权 VPN。正式版开启 R8 优化，不包含本地 Debug API，不会覆盖调试版数据。
 
-发布签名保存在本机 `.private/signing/surge-bridge-release.p12`，配套构建属性在 `.private/signing/release.properties`；二者均不入 Git。后续升级必须沿用这套签名，请将整个签名目录安全备份。仓库继承的 `app/release.keystore` 未用于本次发布。
+发布签名保存在本机 `.private/signing/surge-bridge-release.p12`，配套构建属性在 `.private/signing/release.properties`；二者均不入 Git。后续升级必须沿用这套签名，请将整个签名目录安全备份。公开仓库不包含任何签名文件；发布时必须通过本地属性提供自己的签名路径和密码。
 
 设置好 JDK、Android SDK 和 Gradle 缓存环境后，可用以下方式重建，避免把签名密码放入命令行参数或提交到仓库：
 
@@ -139,7 +139,7 @@ surge.5/6 的 `http_client.detour = DIRECT` 会在没有 GEOIP 缓存、首次�
 
 启动或重载时会迁移旧 `download_detour` 和 surge.5/6 已生成的 DIRECT detour，不修改原始 Surge 文本。明确指定的代理 HTTP 客户端和带自定义拨号选项的 direct 出口保留。原生 sing-box JSON 不自动迁移。
 
-用同一签名覆盖安装新版后，再点击启动即可，不需要删除或重新导入现有订阅。构建产物交付到 `/Users/liuwei/Dropbox/Personal/Dev/Builds/Surge Android APK`。
+用同一签名覆盖安装新版后，再点击启动即可，不需要删除或重新导入现有订阅。构建产物交付到维护者指定的本地目录；该路径和本机操作约定不纳入公开仓库。
 
 `tools/test-converter.sh` 现在还会运行真实内核的无缓存 HTTP 规则下载回归：旧配置必须复现错误，新生成和迁移配置必须实际下载成功并完成启动；测试用不可用默认代理验证规则下载不依赖最终代理出口。
 

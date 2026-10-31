@@ -18,3 +18,25 @@ local.properties
 /.private/
 
 __pycache__/
+
+# Local instructions, chat attachments, profiles, credentials and signed artifacts.
+/AGENTS.md
+/.codex-attachments/
+/.codex/
+/.agents/
+/.env
+/.env.*
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.key
+*.pem
+*.apk
+*.aab
+*.log
+*.conf
+!test/surge/example.conf
+/release.properties
+/signing.properties
+/credentials*.json

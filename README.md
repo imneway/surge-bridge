@@ -2,6 +2,12 @@
 
 Surge `.conf` import and subscription conversion with native Snell v6, based on SFA 1.14.4. This is an independent development fork, not an official SagerNet release. See [setup, compatibility, and debug API](docs/README.zh-CN.md). Original upstream documentation and GPL license follow.
 
+## Public source and private files
+
+This repository contains source code and synthetic test fixtures only. Supply your own subscription/configuration and local signing credentials. The fixture in `test/surge/example.conf` uses reserved example addresses and dummy test keys; it is not a usable subscription.
+
+Private profiles, signing keys/passwords, device logs, chat attachments, local toolchains and APKs are excluded. Keep them in ignored local directories and never force-add them. See [publication and credential handling](docs/publication.md).
+
 ---
 
 # SFA

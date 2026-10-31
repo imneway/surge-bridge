@@ -171,7 +171,7 @@ Tested product commit `6551789` (version 753, `1.14.4-surge.8`). This round adds
 | New generation/storage checks | 9 emulator assertions passed: generation 1 regenerated offline to generation 2, exact current runtime restored, source/overrides retained, missing rule cache fallback remains usable, slow downloads do not block profile reads |
 | Android Snell forwarding | Real TUN→Snell→controlled TCP and UDP destinations passed with udp-relay=true; omitting the option retained TCP and did not deliver UDP to the server |
 | New overrides card | Visible on the OPPO release app. On the emulator, saving HTTPS DNS persisted the value in the profile and re-opening the editor reloaded it correctly |
-| Physical release upgrade | Installed signed .8 over .7 with existing Dine subscription; initial service was stopped, original subscription started successfully after upgrade, Rule mode visible, no startup error dialog |
+| Physical release upgrade | Installed signed .8 over .7 with existing remote subscription; initial service was stopped, original subscription started successfully after upgrade, Rule mode visible, no startup error dialog |
 | Physical connectivity | 9/9 verified-TLS requests across Google home/Google204/gstatic; 2/2 more on cellular and 2/2 after restoring Wi-Fi (13/13 total) |
 | Actual application UI | Chrome rendered the Google page; a new ChatGPT temporary chat returned `12 + 13 = 25` |
 | Final checks | Installed APK SHA-256 matches the .8 release artifact. No FATAL EXCEPTION in the sampled app logcat. System always-on VPN/lockdown stayed unset; Wi-Fi restored enabled; VPN left Started |

@@ -48,7 +48,7 @@ bash tools/build-android.sh
 见 [debug-api.md](debug-api.md)。API 只在 debug 变体启动；release 使用空实现。只监听 Android `127.0.0.1:19090`，每次应用进程启动生成新的 bearer token，电脑经 `adb forward` 和 `run-as` 访问。API 不返回源配置、PSK、订阅 URL 或配置解析器原始错误。新增的 core-logs 接口会包含访问目标、节点标签等敏感元数据，保存后需脱敏再分享。
 
 ```sh
-python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.3-arm64-v8a-debug.apk
+python3 tools/android-debug.py install app/build/outputs/apk/other/debug/SurgeBridge-1.14.4-surge.4-arm64-v8a-debug.apk
 python3 tools/android-debug.py import /path/to/Work.conf
 python3 tools/android-debug.py select 1
 python3 tools/android-debug.py start
@@ -94,3 +94,13 @@ OPPO Android 17 真机验证发现：原目标 DNS 返回错误 IP，且 `IP-CID
 - **多配置隔离**：模式、所选节点和 fake-IP 缓存按配置文件身份隔离；更新同一配置保留身份。旧版共享缓存首次迁移时，可能回到默认 Rule 和组内首节点，请核对选择；后续重启会保留各自选择。
 
 更新、模式、故障切换和开机设置均已补充 debug API，见 [debug-api.md](debug-api.md)。开发计划见 [DEVELOPMENT-2026-10-31.md](DEVELOPMENT-2026-10-31.md)。
+
+
+## 1.14.4-surge.4：真机回归修正
+
+- 重新配置自动更新任务时，使用新的计时起点，并以毫秒计算距离最早到期配置的等待时间。避免 WorkManager 保留旧入队时间，导致提前检查后又额外等待一个周期。
+- 删除配置后重新计算后台调度；删除最后一份开启自动更新的远程配置后，撤销周期任务。
+- OPPO Android 17 真机实际观察到：中途重新调度后，开启更新的配置在约 900.7 秒时更新，关闭更新的配置不变。测试范围与限制见 [validation.md](validation.md)。
+
+
+OPPO 真机的开机广播曾被系统以 `DEFER_BY_OPLUS / PRESSURE` 延迟，解锁后观察超过 5 分钟仍未启动。因此仅打开应用内「开机恢复连接」不能保证这台手机及时自动连接。系统「始终开启的 VPN」是另一种选择，会由 Android 持续维持连接，手动停止的使用方式也会改变。

@@ -5,6 +5,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.bg.BoxService
+import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.compose.base.BaseViewModel
 import io.nekohasekai.sfa.compose.base.UiEvent
 import io.nekohasekai.sfa.constant.Status
@@ -324,6 +325,7 @@ class DashboardViewModel :
                 }
                 // Then delete from database
                 ProfileManager.delete(profile)
+                UpdateProfileWork.reconfigureUpdater()
             } catch (e: Exception) {
                 // Reload profiles if deletion fails
                 loadProfiles()

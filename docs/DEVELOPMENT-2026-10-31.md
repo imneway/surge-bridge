@@ -26,3 +26,8 @@ Scope approved: visible URL import; independent automatic update choice and inte
 - Opt-in failure-only switching and observable state implemented; optional manual DIRECT retained and excluded from automatic candidates.
 - Debug API and CLI cover scheduling, due checks, modes, boot preference and failover status.
 - Version 1.14.4-surge.3 built and installed. Converter/native checks, controlled Android routing/failure tests, emulator reboot/rollback tests and physical Google/ChatGPT checks passed. Details and limitations: [validation.md](validation.md).
+
+
+## Physical regression follow-up
+
+Version 1.14.4-surge.4 corrects periodic scheduling after reconfiguration and cancels obsolete work after profile deletion. Actual timed refresh, independent update choices, routes, controlled failures, rollback, real nodes, network changes and ChatGPT were exercised on the OPPO phone. App-only boot recovery remains subject to observed OPPO broadcast deferral; see [validation.md](validation.md) for the distinct result and system always-on option.

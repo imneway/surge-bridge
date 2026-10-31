@@ -67,3 +67,35 @@ The per-profile cache now isolates selected nodes, mode and fake-IP state; repea
 Private evidence: `.local-tools/features-mixed-direct.log`, `.local-tools/api-final.log`, `.local-tools/boot-test.log`, `.private/phone-surge3-final-apk-google.json`, `.private/chatgpt3-final-reply.png`, `.private/phone-surge3-chatgpt-routing-counts.json`, `.private/phone-surge3-final-failover.json`. These files are ignored and are not included in Git.
 
 Limits: reboot recovery was exercised on the emulator, not by rebooting the user's OPPO phone. Manufacturer background restrictions, long-duration scheduling/uptime and exact periodic execution times remain outside this finite verification. WorkManager schedules best-effort work; opening the app or starting VPN also checks enabled overdue profiles. Generic HTTPS health does not guarantee ChatGPT accepts an exit IP. Existing Surge `url-test` semantics are unchanged; failure-only selection applies to eligible `select` groups.
+
+
+## Complete physical-phone regression — 2026-10-31, surge.3 → surge.4
+
+OPPO PKT110 / Android 17, authorized USB connection. The final build is version 749 (`1.14.4-surge.4`). Tests used temporary configurations and local Snell v6 fixtures; original source, runtime hash, routing overrides, selected node and Rule mode were checked against a private pre-test backup. Temporary profiles were removed through the app UI and their synthetic files cleaned up.
+
+| Check | Result |
+|---|---|
+| Converter / overrides / modes | 80 assertions passed; generated configs passed native validation |
+| URL import on phone UI | Created a remote Surge profile with its own enabled switch and 15-minute interval |
+| Independent update choices | A enabled, B disabled; B could still refresh manually; HTTP 503 retained its previous runtime and exposed failure |
+| Native routing / failure-only controller | 12 assertions passed: Rule/Global/Direct routing, Direct pause, healthy node retained, two failures before switching, no failback, node/mode persistence, manual DIRECT pause, all unavailable never selects DIRECT |
+| Runtime load rollback | Separate native fixture caused a real occupied-port load failure; last-running runtime restored and failure status recorded |
+| Actual nodes and network transitions | 13/13 verified-TLS requests passed across three real Snell nodes, Google homepage/204/gstatic, cellular transition and Wi-Fi restoration |
+| Background stability | 9/9 additional verified-TLS Google requests passed at 20-second intervals |
+| Chrome / ChatGPT UI | Google page rendered; a temporary ChatGPT conversation answered `7 + 8 = 15`; correlated logs contained 26 Snell outbounds and zero DIRECT outbounds |
+| Debug API boundaries | Missing token rejected with 401; untrusted Origin and Host rejected with 403 |
+| Periodic worker regression on surge.4 | Rescheduled deadline was 1 ms after the profile's actual due time; after further profile deletions/reconfiguration, A updated its saved source at 900.7 seconds while B stayed unchanged. No forced job execution or timestamp ageing was used |
+| Delete / cleanup on surge.4 | Deleting the last enabled remote profile left zero enqueued/running periodic update jobs; only original profile ID 1 remained |
+
+Two scheduling issues were corrected during this run. `ExistingPeriodicWorkPolicy.UPDATE` preserves the original enqueue timestamp, so applying a newly computed remaining delay made a job run before its profile was due, skip that profile, then wait another interval. The fix re-enqueues relative to the current time and uses millisecond precision. Deleting a profile also now reconfigures or cancels the updater.
+
+The overnight interruption was separately investigated. The phone entered charger-only boot mode, with a previous shutdown reason. System alarms showed scheduled power-off at 01:00 and power-on at 07:00; timing is consistent with scheduled shutdown. Available system crash/watchdog/last-kernel-log queries contained no matching entries. Repeating the all-nodes-unavailable case did not reproduce the shutdown. System power schedules were left unchanged.
+
+Private evidence is in `.private/full-phone-2026-10-31/`, including `periodic-result.json`, `schedule-deadline-regression.json`, `delete-schedule-result.json`, `controlled-resume.log`, `runtime-rollback.json`, `real-network.json`, `background-stability.json`, `chatgpt-routing.json`, and `scheduled-power-evidence.txt`. The controlled log's attempted cross-format rollback update was rejected at validation; the successful runtime rollback used the separate native fixture. Credentials, endpoints and raw logs are excluded from Git.
+
+
+### App-only boot recovery on OPPO
+
+With the original profile active and app boot recovery enabled, a real reboot was followed by user unlock without opening Surge Bridge. The app process did not start during an observation window exceeding five minutes. Android broadcast diagnostics showed its `BOOT_COMPLETED` receiver as `DEFER_BY_OPLUS SUB_REASON: PRESSURE` / `mBroadcastConsumerDeferApply`; the package was enabled, not force-stopped, and held `RECEIVE_BOOT_COMPLETED`. This is not counted as successful automatic recovery. Emulator boot tests do not override this device-specific result.
+
+Android's separate [always-on VPN mode](https://developer.android.com/develop/connectivity/vpn#always-on) lets the system maintain the VPN service lifecycle. It changes manual-stop behavior and is a separate device preference, not equivalent to the app's last-running-state restore switch. The system's optional non-VPN traffic blocking setting is separate as well.

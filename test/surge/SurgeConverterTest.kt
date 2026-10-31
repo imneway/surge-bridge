@@ -30,7 +30,7 @@ fun main(args: Array<String>) {
         (0 until rs.length()).any { rs.getJSONObject(it).optJSONArray("domain_suffix")?.length() == 10000 }
     } == true }, "all domain entries retained")
     val geo = (0 until sets.length()).map { sets.getJSONObject(it) }.first { it.optString("type") == "remote" }
-    expect(!geo.has("download_detour") && geo.getJSONObject("http_client").getString("detour") == "DIRECT", "GEOIP downloads use explicit modern direct HTTP client")
+    expect(!geo.has("download_detour") && geo.getJSONObject("http_client").similar(JSONObject("""{"engine":"go"}""")), "GEOIP downloads use explicit modern direct HTTP client")
     expect(geo.getString("update_interval") == "1d", "GEOIP update interval preserved")
     expect(result.warnings.any { "IP-ASN omitted" in it } && result.warnings.any { "USER-AGENT omitted" in it }, "coverage gaps visible")
     expect(result.warnings.any { "redundant per-entry policies" in it }, "nonstandard per-entry policies visible")

@@ -48,15 +48,30 @@ object AndroidRuntimeFeatures {
     private fun migrateRuleSetClients(result: SurgeConverter.Result): SurgeConverter.Result {
         val config = JSONObject(result.json)
         val sets = config.optJSONObject("route")?.optJSONArray("rule_set") ?: return result
+        val outbounds = config.optJSONArray("outbounds") ?: JSONArray()
+        val emptyDirectTags = (0 until outbounds.length()).map { outbounds.getJSONObject(it) }
+            .filter { it.optString("type") == "direct" && it.length() == 2 }
+            .map { it.optString("tag") }.toSet()
         var changed = false
         for (i in 0 until sets.length()) {
             val ruleSet = sets.getJSONObject(i)
-            if (ruleSet.optString("type") != "remote" || !ruleSet.has("download_detour")) continue
-            if (!ruleSet.has("http_client")) {
-                ruleSet.put("http_client", obj("detour" to ruleSet.getString("download_detour")))
+            if (ruleSet.optString("type") != "remote") continue
+            if (ruleSet.has("download_detour")) {
+                if (!ruleSet.has("http_client")) {
+                    ruleSet.put("http_client", obj("detour" to ruleSet.getString("download_detour")))
+                }
+                ruleSet.remove("download_detour")
+                changed = true
             }
-            ruleSet.remove("download_detour")
-            changed = true
+            val client = ruleSet.optJSONObject("http_client") ?: continue
+            if (client.optString("detour") in emptyDirectTags) {
+                // Modern HTTP clients reject a detour to an unconfigured direct outbound.
+                // Explicit Go engine keeps the client nonempty: {} selects the deprecated
+                // default-outbound fallback instead of an independent direct dialer.
+                client.remove("detour")
+                if (!client.has("engine")) client.put("engine", "go")
+                changed = true
+            }
         }
         return if (changed) result.copy(json = config.toString(2)) else result
     }

@@ -22,3 +22,5 @@ mkdir -p .local-tools
 "$SING_BOX" check -c .local-tools/runtime-features-test.json
 
 "$SING_BOX" check -c .local-tools/migrated-runtime-test.json
+
+SING_BOX="$SING_BOX" python3 tools/test-ruleset-download.py

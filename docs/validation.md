@@ -128,3 +128,16 @@ Reference: https://sing-box.sagernet.org/configuration/rule-set/ and https://sin
 - Artifact inspection confirms package `io.github.liuw.surgebridge`, versionCode 751, ARM64 native library and no debuggable marker. Release DEX contains none of the debug token/API endpoint markers; the release DebugBridge source is the no-op implementation.
 - Signing credentials are excluded from Git under `.private/signing/`. The inherited repository keystore was not used. APK SHA-256 values are written alongside the artifacts in `SHA256SUMS`.
 - This turn built and inspected the release APK; it did not install it or perform new release-device UI/network tests. The phone's previously verified surge.5 debug installation remains intact. Release uses a separate package and therefore requires its own configuration import and VPN authorization.
+
+
+## Cold GEOIP download repair — 2026-10-31, surge.7
+
+The surge.5/6 HTTP migration incorrectly carried `DIRECT` into a modern client detour. Native sing-box rejects detours to an empty direct outbound on the first dial. Static `check` passed, and prior physical testing used a previously downloaded rule-set cache, masking the cold-start error. The user reported the failure after importing a URL subscription into the fresh release package.
+
+- Generated GEOIP clients now explicitly select `engine: go` with no detour. This is a nonempty independent direct HTTP client; an empty object would select the deprecated default-outbound fallback. URLs and refresh intervals remain unchanged.
+- Startup migration handles both legacy `download_detour` and the broken surge.5/6 modern detour; raw source and other profile settings are retained. Explicit proxy clients and configured direct outbounds are preserved.
+- 91 Kotlin assertions passed (37 converter, 19 routing overrides, 35 runtime/failover), and four generated configurations passed native validation.
+- New `tools/test-ruleset-download.py`, included in `tools/test-converter.sh`, runs real sing-box instances with fresh temporary caches and a local binary rule server. Both old new-import and old migrated-cache clients reproduced the exact empty-direct error despite passing `check`. Both fixed clients downloaded and started, without deprecation output, even with an unreachable final proxy. No user cache is deleted.
+- A separate real HTTPS cold-start test fetched the production GitHub GEOIP CN SRS and started the native core, with normal certificate verification and no deprecation output. Evidence is private in `.private/release-surge7/real-https-cold.log`.
+- USB device inventory was empty during this fix. These are host native-core startup/download checks, not a new Android-device acceptance test. Existing release subscriptions migrate on next start after installing the update.
+- Signed release build passed R8 and release vital lint. All three surge.7 APKs were copied to the configured Dropbox delivery directory and SHA-256 compared with build outputs. `apksigner` verified every delivered APK against the existing surge.6 certificate; ARM64 metadata confirms release package/versionCode 752, no debuggable marker and no debug API token/endpoint markers.

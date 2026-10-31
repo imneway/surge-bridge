@@ -306,7 +306,7 @@ private class Conversion(private val fetchRules: (String, Int) -> String) {
                 val tag = "surge-geoip-$country"
                 ruleSets[tag] = obj("type" to "remote", "tag" to tag, "format" to "binary",
                     "url" to "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-$country.srs",
-                    "http_client" to obj("detour" to "DIRECT"), "update_interval" to "1d")
+                    "http_client" to obj("engine" to "go"), "update_interval" to "1d")
                 json = obj("rule_set" to listOf(tag)); resolve = true
                 warnings.add("GEOIP uses SagerNet country datasets, which can differ from Surge's database.")
             }

@@ -132,3 +132,13 @@ PY
 ```
 
 产物位于 `app/build/outputs/apk/other/release/`。OPPO 真机使用 `arm64-v8a` 包；`x86_64` 主要供模拟器使用，`universal` 同时包含两种架构。正式版不使用调试 API，自动化诊断仍使用保留的调试版。
+
+## 1.14.4-surge.7：修复首次启动下载 GEOIP 失败
+
+surge.5/6 的 `http_client.detour = DIRECT` 会在没有 GEOIP 缓存、首次下载时被内核拒绝，导致 VPN 无法启动；这是应用生成配置的兼容问题，不是订阅内容错误。现在使用显式 `http_client: {"engine": "go"}`，由 HTTP 客户端直接拨号，保留原规则下载地址和更新周期。不能用空对象替代，它会触发旧的默认出口回退逻辑。
+
+启动或重载时会迁移旧 `download_detour` 和 surge.5/6 已生成的 DIRECT detour，不修改原始 Surge 文本。明确指定的代理 HTTP 客户端和带自定义拨号选项的 direct 出口保留。原生 sing-box JSON 不自动迁移。
+
+用同一签名覆盖安装新版后，再点击启动即可，不需要删除或重新导入现有订阅。构建产物交付到 `/Users/liuwei/Dropbox/Personal/Dev/Builds/Surge Android APK`。
+
+`tools/test-converter.sh` 现在还会运行真实内核的无缓存 HTTP 规则下载回归：旧配置必须复现错误，新生成和迁移配置必须实际下载成功并完成启动；测试用不可用默认代理验证规则下载不依赖最终代理出口。

@@ -1,6 +1,6 @@
 # Surge Bridge 开发说明
 
-这是基于 SagerNet/sing-box-for-android 的 Android 分支，目标是直接导入、订阅更新和编辑同一份 Surge `.conf`。界面保留原始 Surge 源文件，VPN 内核读取经过校验的 sing-box JSON。原 FlClash 仓库保留作参考，未删除。
+这是基于 SagerNet/sing-box-for-android 的 Android 分支，目标是直接导入、订阅更新和编辑同一份 Surge `.conf`。界面保留原始 Surge 源文件，VPN 内核读取经过校验的 sing-box JSON。原 FlClash 参考仓库已按用户要求于 2026-10-31 移至废纸篓，当前开发仅使用本仓库。
 
 ## 基线与构建
 

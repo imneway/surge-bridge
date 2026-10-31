@@ -1,5 +1,7 @@
 # Surge / Mihomo / Surge Bridge 配置兼容范围
 
+**以下表格描述转换能力，不等于全部已实测可用。代理协议的端到端验证目前仅覆盖 Snell v6；其他协议尚未完成对应服务端的端到端验证。** 真机覆盖主要是一台 OPPO 手机，另有模拟器和受控内核测试；详见 [验证记录](validation.md)。
+
 比较基于 Surge 官方格式、Mihomo 文档及最初 FlClash 检出的固定内核；不是对未来所有版本的兼容声明。选择 SFA 的关键是可构建的 sing-box 1.14.4 原生 Snell v6 实现。初始 FlClash 固定 Mihomo 内核接受 Snell 4/5 兼容路径，不接受 version=6。
 
 | Surge feature | Mihomo 对应能力 | 此分支映射/限制 |

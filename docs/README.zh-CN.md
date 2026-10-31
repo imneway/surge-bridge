@@ -1,12 +1,25 @@
 # Surge Bridge 开发说明
 
-这是基于 SagerNet/sing-box-for-android 的 Android 分支，目标是直接导入、订阅更新和编辑同一份 Surge `.conf`。界面保留原始 Surge 源文件，VPN 内核读取经过校验的 sing-box JSON。原 FlClash 参考仓库已按用户要求于 2026-10-31 移至废纸篓，当前开发仅使用本仓库。
+这是基于 SagerNet/sing-box-for-android 的实验性配置兼容项目，可导入、订阅更新和编辑部分 Surge `.conf`。界面保留原始 Surge 源文件，VPN 内核读取转换后的 sing-box JSON。它不是 Surge 或 SagerNet 官方客户端，也不是 Surge 的完整 Android 移植版。
+
+## 实测范围与限制（先读）
+
+**本项目只有 Snell v6 做过代理协议的端到端连通性验证。** Snell v4/v5、Shadowsocks、Trojan、HTTP(S)、SOCKS5、AnyTLS 虽然存在配置转换路径，但没有完成对应真实代理服务的端到端验证；能导入不等于已验证可用。
+
+- Snell v6 的受控测试覆盖 default / unshaped / unsafe-raw、TCP/UDP 和 reuse 开关；另有 Android 真机节点连通性验证，不代表所有服务端或服务商均兼容。UDP 需在配置中显式设置 `udp-relay=true`。
+- 设备验证主要是一台 OPPO 手机和 Android 模拟器；其他机型、系统后台策略及网络环境未经验证。
+- 不实现 MITM、脚本、URL/Header Rewrite 等完整 Surge 能力。部分不支持的规则或选项会跳过并提示，其他情况会拒绝导入；必须阅读兼容性提示，不能把导入成功视为行为完全一致。
+- GeoIP 数据、DNS 解析时机、解析失败处理和部分规则语义与 Surge 有差异；同一配置可能需要 Android 本机的包名/域名覆盖。Google Play 的实测案例见下文。
+- 定期更新和开机恢复受 Android/OEM 限制，不保证即时执行或自动重连；测试中的 OPPO 未证明仅靠应用自启动就能可靠恢复 VPN。
+- 当前构建只有 ARM64 / x86_64；Naive、OpenVPN、OpenConnect、Tailscale、USB/IP 未启用，即使仍能看到相关上游界面也不代表可用。
+
+具体支持项以 [兼容性说明](compatibility.md) 为准，实测证据和未验证范围见 [验证记录](validation.md)。
 
 ## 基线与构建
 
 - SFA 发布基线：1.14.4，`f87c2ebdb7e34754be751bb5e58926db2fed8f8c`。
 - sing-box 内核：v1.14.4，`c005f35300ce76427dc285481ec5695f5b179cd2`；gomobile v0.1.12。
-- 分支：`feat/surge-profiles`。保留 upstream Git 历史和 GPL-3.0 许可证。
+- 公开分支：`main`。公开历史从清理后的源码快照开始，旧开发历史仅保留在本机；保留上游归属说明和 GPL-3.0 许可证。
 - 调试包名：`io.github.liuw.surgebridge.debug`；应用名 Surge Bridge，与官方 SFA 并存。
 - 本分支构建 ARM64 和 x86_64；没有 32 位 APK。调试版使用系统默认 debug 签名，升级须保留同一 debug keystore。正式版使用独立本地签名，详见下方发布构建。
 - 开发构建关闭官方 SFA 的应用更新入口，防止把官方包误当成此分支更新。

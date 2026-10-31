@@ -195,3 +195,17 @@ Reproduce the added storage checks on an already prepared disposable emulator wi
 python3 tools/test-android-store.py --serial emulator-5554
 python3 tools/test-android-snell.py .local-tools/sing-box-1.14.4-darwin-arm64/sing-box --serial emulator-5554
 ```
+
+## Google Play download diagnosis — 2026-10-31
+
+Physical OPPO, release `1.14.4-surge.8`, existing remote profile, Wi-Fi. No APK rebuild or application-code change was needed for this diagnosis.
+
+- Play could browse but its requested application download stayed at zero bytes. Finsky logged Cronet `ERR_CONNECTION_RESET` and `CANNOT_CONNECT`, then retried. Available storage was approximately 12 GB; the observed failure occurred before package installation.
+- Exported core logs associated `com.android.vending` with both paths: `play.googleapis.com` and image requests used Snell, while installation CDN hosts under `xn--ngstr-lra8j.com` used `DIRECT`. Direct TCP connections to `113.108.239.196`, `113.108.239.132`, `113.108.239.133` and `58.63.233.69` repeatedly timed out after five seconds. INFO logs establish the selected outbound, not the exact matched source rule or DNS pollution.
+- Temporarily selected Global, cancelled the stuck request and retried the same user-requested application. Play displayed **Open / Uninstall**. Package Manager independently confirmed installation of `com.anthropic.aibo`, version `1.261029.18`, at 17:07:02, with `com.android.vending` as installer. No account/cache reset or target-app uninstall was performed.
+- Restored Rule and saved a per-profile Android override: policy `Proxy`, domain suffix `xn--ngstr-lra8j.com`, empty package and DNS overrides. Core logs confirmed requests to the previously direct CDN hosts now used Snell with the hostname. This leaves the subscription source unchanged.
+- Two HTTPS requests to Google `/generate_204` passed with certificate verification in Rule mode after the override. Root-path probes of two old CDN hostnames still timed out (four attempts); an additional Global probe of one old hostname also timed out. A bare CDN root request is not equivalent to a signed APK download URL and does not prove CDN availability or unavailability for the actual artifact.
+
+**Validation limit:** the completed installation was verified under Global, before the targeted override. No second full Play download was attempted under Rule with the override; the override is verified for persistence/routing, not as a complete download fix. Global plus retry is the verified workaround. Future failures require a new Play/core-log correlation because CDN selection can change; do not attribute all resets to DNS or claim that the exact source rule has been identified.
+
+Private device logs and screenshots are retained only under ignored `.private/play-download-diagnostics/`. No credentials, subscription URL, account identifiers or signed download URLs are included here. Phone returned to Rule with the VPN started; temporary exported phone logs and the probe binary were removed. Always-on VPN settings were not changed.

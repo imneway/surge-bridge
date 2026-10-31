@@ -1,0 +1,44 @@
+# Surge Bridge (Android development fork)
+
+Surge `.conf` import and subscription conversion with native Snell v6, based on SFA 1.14.4. This is an independent development fork, not an official SagerNet release. See [setup, compatibility, and debug API](docs/README.zh-CN.md). Original upstream documentation and GPL license follow.
+
+## Public source and private files
+
+This repository contains source code and synthetic test fixtures only. Supply your own subscription/configuration and local signing credentials. The fixture in `test/surge/example.conf` uses reserved example addresses and dummy test keys; it is not a usable subscription.
+
+Private profiles, signing keys/passwords, device logs, chat attachments, local toolchains and APKs are excluded. Keep them in ignored local directories and never force-add them. See [publication and credential handling](docs/publication.md).
+
+---
+
+# SFA
+
+Experimental Android client for sing-box, the universal proxy platform.
+
+## Documentation
+
+https://sing-box.sagernet.org/installation/clients/sfa/
+
+## License
+
+```
+Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+In addition, no derivative work may use the name or imply association
+with this application without prior consent.
+```
+
+Under the license, that forks of the app are not allowed to be listed on F-Droid or other app stores
+under the original name.

@@ -41,6 +41,7 @@ object Settings {
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)
     var restoreOnBoot by dataStore.boolean("surge_restore_on_boot") { true }
+    var startOnLaunch by dataStore.boolean("surge_start_on_launch") { true }
 
     var updateSource by dataStore.string(SettingsKey.UPDATE_SOURCE) { "github" }
     var checkUpdateEnabled by dataStore.boolean(SettingsKey.CHECK_UPDATE_ENABLED) { false }

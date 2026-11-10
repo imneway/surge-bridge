@@ -162,6 +162,7 @@ class MainActivity :
     private val connection = ServiceConnection(this, this)
     private lateinit var dashboardViewModel: DashboardViewModel
     private var currentServiceStatus by mutableStateOf(Status.Stopped)
+    private var autoStartPending = false
     private var currentAlert by mutableStateOf<Pair<Alert, String?>?>(null)
     private var showLocationPermissionDialog by mutableStateOf(false)
     private var showBackgroundLocationDialog by mutableStateOf(false)
@@ -232,6 +233,8 @@ class MainActivity :
 
         lifecycleScope.launch {
             Settings.dataStore.initialize()
+            // Launched from the home screen: start once the first status report says Stopped.
+            autoStartPending = savedInstanceState == null && shouldStartOnLaunch(intent)
             connection.reconnect()
             RemoteControlManager.restore()
 
@@ -259,8 +262,18 @@ class MainActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Launcher tap on the existing singleTask instance.
+        if (shouldStartOnLaunch(intent) && currentServiceStatus == Status.Stopped) {
+            startService()
+        }
         handleIntent(intent)
     }
+
+    private fun shouldStartOnLaunch(intent: Intent?): Boolean =
+        intent?.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_LAUNCHER) &&
+            Settings.startOnLaunch &&
+            Settings.selectedProfile != -1L
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) {
@@ -1503,6 +1516,10 @@ class MainActivity :
 
     override fun onServiceStatusChanged(status: Status) {
         currentServiceStatus = status
+        if (autoStartPending) {
+            autoStartPending = false
+            if (status == Status.Stopped) startService()
+        }
     }
 
     fun reconnect() {

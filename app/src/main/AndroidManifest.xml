@@ -132,6 +132,21 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".bg.ControlActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@style/AppTheme.Share">
+            <intent-filter>
+                <action android:name="io.github.liuw.surgebridge.action.START" />
+                <action android:name="io.github.liuw.surgebridge.action.STOP" />
+                <action android:name="io.github.liuw.surgebridge.action.TOGGLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".bg.TileService"
             android:directBootAware="true"

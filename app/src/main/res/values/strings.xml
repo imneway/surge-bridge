@@ -748,6 +748,7 @@
     <string name="android_overrides_restart">Settings saved. Start or restart the VPN to apply them.</string>
     <string name="profile_add_url">Import from URL</string>
     <string name="profile_add_url_description">Download a Surge configuration and choose updates for this profile</string>
+    <string name="start_on_launch">Start when app opens</string>
     <string name="restore_vpn_on_boot">Restore connection after reboot</string>
     <string name="restore_vpn_on_boot_description">Restore only if the VPN was running before reboot. Stopping it disables recovery until the next start.</string>
     <string name="system_always_on_vpn">System always-on VPN settings</string>

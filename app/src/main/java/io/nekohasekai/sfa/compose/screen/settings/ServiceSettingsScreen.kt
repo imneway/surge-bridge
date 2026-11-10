@@ -93,6 +93,7 @@ fun ServiceSettingsScreen(
     val scope = rememberCoroutineScope()
     var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
     var restoreOnBoot by remember { mutableStateOf(Settings.restoreOnBoot) }
+    var startOnLaunch by remember { mutableStateOf(Settings.startOnLaunch) }
     var allowBypass by remember { mutableStateOf(Settings.allowBypass) }
     val notifyApplyChange = rememberApplyServiceChangeNotifier(serviceStatus)
     val requestBatteryOptimizationLauncher =
@@ -129,6 +130,18 @@ fun ServiceSettingsScreen(
                 bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
             ),
     ) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.start_on_launch)) },
+            trailingContent = {
+                Switch(checked = startOnLaunch, onCheckedChange = {
+                    startOnLaunch = it
+                    scope.launch(Dispatchers.IO) {
+                        Settings.startOnLaunch = it
+                        Settings.dataStore.flush()
+                    }
+                })
+            },
+        )
         ListItem(
             headlineContent = { Text(stringResource(R.string.restore_vpn_on_boot)) },
             supportingContent = { Text(stringResource(R.string.restore_vpn_on_boot_description)) },
